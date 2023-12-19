@@ -1,13 +1,21 @@
 [build-system]
-requires = ["setuptools>=59.6.0"]
+requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name="dean_utils"
-version="0.0.2"
+name = "dean_utils"
+version="0.0.3"
 authors=[
     { name="Dean MacGregor", email="powertrading121@gmail.com"}
 ]
 description="various utils, functions, patches that I like"
 readme = "README.md"
 requires-python = ">=3.7"
+dependencies=[
+    "polars",
+    "pyarrow",
+    "azure-storage-blob",
+    "adlfs",
+    "fsspec",
+    "azure-storage-queue",
+    "python-multipart"]
