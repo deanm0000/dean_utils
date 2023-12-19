@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=59.6.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="dean_utils"
+version="0.0.1"
+authors=[
+    { name="Dean MacGregor", email="powertrading121@gmail.com"}
+]
+description="various utils, functions, patches that I like"
+readme = "README.md"
+requires-python = ">=3.7"

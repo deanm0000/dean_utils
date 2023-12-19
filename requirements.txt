@@ -1,0 +1,8 @@
+polars
+pyarrow
+azure-storage-blob
+adlfs
+fsspec
+azure-storage-queue
+pandas
+python-multipart
