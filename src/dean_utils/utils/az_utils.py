@@ -56,9 +56,8 @@ async def send_to_queue(queue: str, messages: List):
 
 
 class async_abfs:
-    def __init__(self, connection_string=None):
-        if connection_string is None:
-            self.connection_string = os.environ["Synblob"]
+    def __init__(self, connection_string=os.environ["Synblob"]):
+        self.connection_string = connection_string
         self.sync = fsspec.filesystem("abfss", connection_string=self.connection_string)
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
