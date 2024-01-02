@@ -24,11 +24,10 @@ def pl_scan_pq(
     row_count_offset: int = 0,
     parallel: ParallelStrategy = "auto",
     use_statistics: bool = True,
-    hive_partitioning: bool = True,
     rechunk: bool = True,
     low_memory: bool = False,
     cache: bool = True,
-    storage_options=stor,
+    storage_options=None,
     retries: int = 0,
 ) -> pl.LazyFrame:
     """
@@ -61,6 +60,8 @@ def pl_scan_pq(
         Cache the result after reading.
     retries
         Number of retries if accessing a cloud instance fails."""
+    if storage_options is None:
+        storage_options = stor
     return pl.scan_parquet(
         f"abfs://{source}",
         n_rows=n_rows,
@@ -85,11 +86,10 @@ def pl_scan_hive(
     row_count_offset: int = 0,
     parallel: ParallelStrategy = "auto",
     use_statistics: bool = True,
-    hive_partitioning: bool = True,
     rechunk: bool = True,
     low_memory: bool = False,
     cache: bool = True,
-    storage_options=stor,
+    storage_options=None,
     retries: int = 0,
 ) -> pl.LazyFrame:
     """
@@ -122,6 +122,8 @@ def pl_scan_hive(
         Cache the result after reading.
     retries
         Number of retries if accessing a cloud instance fails."""
+    if storage_options is None:
+        storage_options = stor
     return pl.scan_parquet(
         f"abfs://{source}",
         n_rows=n_rows,
