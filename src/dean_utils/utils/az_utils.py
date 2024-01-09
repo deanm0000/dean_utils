@@ -59,6 +59,15 @@ class async_abfs:
     def __init__(self, connection_string=os.environ["Synblob"]):
         self.connection_string = connection_string
         self.sync = fsspec.filesystem("abfss", connection_string=self.connection_string)
+        key_conv = {"AccountName": "account_name", "AccountKey": "account_key"}
+        stor = {
+            (splt := x.split("=", 1))[0]: splt[1]
+            for x in self.connection_string.split(";")
+        }
+        stor = {
+            key_conv[key]: val for key, val in stor.items() if key in key_conv.keys()
+        }
+        self.stor = stor
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
