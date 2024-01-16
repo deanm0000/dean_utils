@@ -159,6 +159,37 @@ class async_abfs:
             **kwargs,
         )
 
+    async def put_file(
+        self,
+        lpath,
+        rpath,
+        delimiter="/",
+        overwrite=True,
+        callback=None,
+        max_concurrency=None,
+        **kwargs,
+    ):
+        """
+        Copy single file to remote
+
+        :param lpath: Path to local file
+        :param rpath: Path to remote file
+        :param delimitier: Filepath delimiter
+        :param overwrite: Boolean (True). Whether to overwrite any existing file
+            (True) or raise if one already exists (False).
+        """
+        this_fs = fsspec.filesystem(
+            "abfss", connection_string=self.connection_string, asyncronous=True
+        )
+        return await this_fs._put_file(
+            lpath,
+            rpath=rpath,
+            delimiter=delimiter,
+            overwrite=overwrite,
+            callback=callback,
+            max_concurrency=max_concurrency,
+        )
+
     async def ls(
         self,
         path: str,
