@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dean_utils"
-version="0.0.12"
+version="0.0.13"
 authors=[
     { name="Dean MacGregor", email="powertrading121@gmail.com"}
 ]
 description="various utils, functions, patches that I like"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies=[
     "polars",
     "pyarrow",
@@ -18,4 +18,7 @@ dependencies=[
     "adlfs",
     "fsspec",
     "azure-storage-queue",
-    "python-multipart"]
+    "python-multipart",
+    "azure-cosmos"
+
+    ]
