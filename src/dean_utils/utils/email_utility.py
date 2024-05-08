@@ -4,6 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 import ssl
 import os
+from azure.communication.email.aio import EmailClient
 
 
 def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
@@ -40,3 +41,31 @@ def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
     ) as server:
         server.login(from_email, os.environ["gmail_pw"])
         server.sendmail(from_email, to_email, mimemsg.as_string())
+
+
+async def az_send(
+    subject: str = None,
+    msg: str = None,
+    html: str = None,
+    from_email: str = None,
+    to_email: str = None,
+) -> None:
+    email_client = EmailClient.from_connection_string(os.environ["azuremail"])
+    if os.environ["error_email"] is not None:
+        to_email = os.environ["error_email"]
+    if os.environ["from_email"] is not None:
+        from_email = os.environ["from_email"]
+    content = {}
+    if subject is not None:
+        content["subject"] = subject
+    if msg is not None:
+        content["plainText"] = msg
+    if html is not None:
+        content["html"] = html
+    email_client.begin_send(
+        dict(
+            senderAddress=from_email,
+            recipients=dict(to=[{"address": to_email}]),
+            content=content,
+        )
+    )

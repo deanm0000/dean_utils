@@ -19,6 +19,7 @@ dependencies=[
     "fsspec",
     "azure-storage-queue",
     "python-multipart",
-    "azure-cosmos"
+    "azure-cosmos",
+    "azure-communication-email"
 
     ]
