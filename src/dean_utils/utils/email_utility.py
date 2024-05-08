@@ -4,7 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 import ssl
 import os
-from azure.communication.email.aio import EmailClient
+from azure.communication.email import EmailClient
 
 
 def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
@@ -43,17 +43,19 @@ def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
         server.sendmail(from_email, to_email, mimemsg.as_string())
 
 
-async def az_send(
+email_client = EmailClient.from_connection_string(os.environ["azuremail"])
+
+
+def az_send(
     subject: str = None,
     msg: str = None,
     html: str = None,
     from_email: str = None,
     to_email: str = None,
 ) -> None:
-    email_client = EmailClient.from_connection_string(os.environ["azuremail"])
-    if os.environ["error_email"] is not None:
+    if os.environ["error_email"] is not None and to_email is None:
         to_email = os.environ["error_email"]
-    if os.environ["from_email"] is not None:
+    if os.environ["from_email"] is not None and from_email is None:
         from_email = os.environ["from_email"]
     content = {}
     if subject is not None:
