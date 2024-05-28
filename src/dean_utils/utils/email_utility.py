@@ -7,6 +7,10 @@ import os
 from azure.communication.email import EmailClient
 
 
+class MissingEnvVars(Exception):
+    pass
+
+
 def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
     """
     # Send email using smtp.gmail.com, password must be stored in env variable gmail_pw
@@ -43,7 +47,10 @@ def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
         server.sendmail(from_email, to_email, mimemsg.as_string())
 
 
-email_client = EmailClient.from_connection_string(os.environ["azuremail"])
+try:
+    email_client = EmailClient.from_connection_string(os.environ["azuremail"])
+except:  # noqa: E722
+    email_client = None
 
 
 def az_send(
@@ -53,6 +60,8 @@ def az_send(
     from_email: str = None,
     to_email: str = None,
 ) -> None:
+    if email_client is None:
+        raise MissingEnvVars("missing azuremail var")
     if os.environ["error_email"] is not None and to_email is None:
         to_email = os.environ["error_email"]
     if os.environ["from_email"] is not None and from_email is None:

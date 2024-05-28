@@ -6,3 +6,4 @@ fsspec
 azure-storage-queue
 python-multipart
 azure-communication-email
+httpx

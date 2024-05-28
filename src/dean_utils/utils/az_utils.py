@@ -4,10 +4,18 @@ import os
 from azure.storage.queue.aio import QueueServiceClient as QSC
 from azure.storage.queue import TextBase64EncodePolicy
 import azure.storage.blob as asb
+from azure.storage.blob.aio import BlobClient
+from azure.storage.blob import BlobBlock
+from azure.core.exceptions import HttpResponseError
 import asyncio
 from typing import List, Optional
 import fsspec
+import httpx
 from datetime import datetime, timedelta, timezone
+from typing import TypeAlias, Literal
+from uuid import uuid4
+
+HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
 
 
 def def_cos(db_name, client_name):
@@ -68,6 +76,66 @@ class async_abfs:
             key_conv[key]: val for key, val in stor.items() if key in key_conv.keys()
         }
         self.stor = stor
+
+    async def stream_dl(
+        self,
+        client: httpx.AsyncClient,
+        method: HTTPX_METHODS,
+        url: str,
+        path: str,
+        /,
+        recurs=False,
+        **httpx_extras,
+    ) -> None:
+        """
+        Help on method stream_dl
+
+        async stream_dl(client, method, url, **httpx_extras)
+            Download file streaming in chunks in async as downloader and to a Blob
+
+            Parameters
+            ----------
+            client: httpx.AsyncClient
+                The httpx Async Client object to use
+            method:
+                The HTTP method whether GET or POST
+            url:
+                The URL to download
+            path:
+                The full path to Azure file being saved
+            **httpx_extras
+                Any extra arguments to be sent to client.stream
+        """
+        async with BlobClient.from_connection_string(
+            self.connection_string, *(path.split("/", maxsplit=1))
+        ) as target, client.stream(method, url, **httpx_extras) as resp:
+            resp.raise_for_status()
+            block_list = []
+            async for chunk in resp.aiter_bytes():
+                block_id = uuid4().hex
+                try:
+                    await target.stage_block(block_id=block_id, data=chunk)
+                except HttpResponseError as err:
+                    if "The specified blob or block content is invalid." not in str(
+                        err
+                    ):
+                        raise err
+                    await asyncio.sleep(1)
+                    await target.commit_block_list([])
+                    await target.delete_blob()
+                    if recurs is False:
+                        await self.stream_dl(
+                            client,
+                            method,
+                            url,
+                            path,
+                            recurs=True,
+                            httpx_extras=httpx_extras,
+                        )
+                    else:
+                        raise err
+                block_list.append(BlobBlock(block_id=block_id))
+            await target.commit_block_list(block_list)
 
     async def exists(self, path: str):
         """
