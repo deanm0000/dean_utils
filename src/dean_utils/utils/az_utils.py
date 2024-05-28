@@ -130,7 +130,7 @@ class async_abfs:
                             url,
                             path,
                             recurs=True,
-                            httpx_extras=httpx_extras,
+                            **httpx_extras,
                         )
                     else:
                         raise err
