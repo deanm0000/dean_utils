@@ -137,18 +137,6 @@ class async_abfs:
                 block_list.append(BlobBlock(block_id=block_id))
             await target.commit_block_list(block_list)
 
-    async def exists(self, path: str):
-        """
-        Help on method _exists in module adlfs.spec:
-
-        async _exists(path) method of adlfs.spec.AzureBlobFileSystem instance
-            Is there a file at the given path
-        """
-        this_fs = fsspec.filesystem(
-            "abfss", connection_string=self.connection_string, asyncronous=True
-        )
-        return this_fs._exists(path)
-
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
         Help on method _async_walk in module adlfs.spec:
