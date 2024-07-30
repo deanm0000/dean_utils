@@ -54,11 +54,11 @@ except:  # noqa: E722
 
 
 def az_send(
-    subject: str = None,
-    msg: str = None,
-    html: str = None,
-    from_email: str = None,
-    to_email: str = None,
+    subject: str | None = None,
+    msg: str | None = None,
+    html: str | None = None,
+    from_email: str | None = None,
+    to_email: str | None = None,
 ) -> None:
     if email_client is None:
         raise MissingEnvVars("missing azuremail var")
