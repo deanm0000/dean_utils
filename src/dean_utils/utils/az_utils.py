@@ -143,6 +143,17 @@ async def delete_message(
         return task
 
 
+async def clear_messages(
+    queue,
+    **kwargs,
+):
+    async with AIO_SERVE.get_queue_client(
+        queue, message_encode_policy=TextBase64EncodePolicy()
+    ) as aio_client:
+        task = await aio_client.clear_messages(**kwargs)
+        return task
+
+
 class async_abfs:
     def __init__(self, connection_string=os.environ["Synblob"]):
         self.connection_string = connection_string
