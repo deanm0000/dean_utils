@@ -76,13 +76,15 @@ async def send_message(
             for message in messages:
                 if not isinstance(message, str):
                     message = json.dumps(message)
-                asyncio.create_task(
-                    aio_client.send_message(
-                        message,
-                        visibility_timeout=visibility_timeout,
-                        time_to_live=time_to_live,
-                        timeout=timeout,
-                        **kwargs,
+                tasks.append(
+                    asyncio.create_task(
+                        aio_client.send_message(
+                            message,
+                            visibility_timeout=visibility_timeout,
+                            time_to_live=time_to_live,
+                            timeout=timeout,
+                            **kwargs,
+                        )
                     )
                 )
 
