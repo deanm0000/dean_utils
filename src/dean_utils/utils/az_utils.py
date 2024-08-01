@@ -91,7 +91,13 @@ async def send_message(
         else:
             if not isinstance(messages, str):
                 messages = json.dumps(messages)
-            return await aio_client.send_message(messages)
+            return await aio_client.send_message(
+                messages,
+                visibility_timeout=visibility_timeout,
+                time_to_live=time_to_live,
+                timeout=timeout,
+                **kwargs,
+            )
 
 
 async def update_queue(
