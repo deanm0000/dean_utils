@@ -59,6 +59,20 @@ async def cos_query_all(cosdb, QRY):
     return returns
 
 
+async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
+    async with AIO_SERVE.get_queue_client(
+        queue, message_encode_policy=TextBase64EncodePolicy()
+    ) as aio_client:
+        return await aio_client.peek_messages(max_messages=max_messages)
+
+
+async def get_queue_properties(queue: str, **kwargs):
+    async with AIO_SERVE.get_queue_client(
+        queue, message_encode_policy=TextBase64EncodePolicy()
+    ) as aio_client:
+        return await aio_client.get_queue_properties()
+
+
 async def send_message(
     queue: str,
     messages: List[str] | str | dict,
