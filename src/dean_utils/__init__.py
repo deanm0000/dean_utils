@@ -1,6 +1,9 @@
 __all__ = [
     "async_abfs",
     "cos_query_all",
+    "clear_messages",
+    "peek_messages",
+    "get_queue_properties",
     "send_message",
     "update_queue",
     "delete_message",
@@ -14,9 +17,12 @@ __all__ = [
 from dean_utils.utils.az_utils import (
     async_abfs,
     cos_query_all,
+    peek_messages,
+    get_queue_properties,
     send_message,
     update_queue,
     delete_message,
+    clear_messages,
     def_cos,
 )
 from dean_utils.utils.email_utility import send_email, az_send
