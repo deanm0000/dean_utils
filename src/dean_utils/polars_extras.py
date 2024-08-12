@@ -30,7 +30,7 @@ def pl_scan_pq(
     cache: bool = True,
     storage_options=None,
     retries: int = 2,
-    include_file_paths: bool | None = False,
+    include_file_paths: str | None = None,
     **kwargs,
 ) -> pl.LazyFrame:
     """
@@ -113,7 +113,7 @@ def pl_scan_hive(
     cache: bool = True,
     storage_options=None,
     retries: int = 2,
-    include_file_paths: bool | None = False,
+    include_file_paths: str | None = None,
     **kwargs,
 ) -> pl.LazyFrame:
     """
