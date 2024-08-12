@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import fsspec
 import os
 from typing import Any, Sequence
+from inspect import signature
 
 abfs = fsspec.filesystem("abfss", connection_string=os.environ["Synblob"])
 
@@ -20,15 +21,17 @@ def pl_scan_pq(
     source: str,
     *,
     n_rows: int | None = None,
-    row_count_name: str | None = None,
-    row_count_offset: int = 0,
+    row_index_name: str | None = None,
+    row_index_offset: int = 0,
     parallel: ParallelStrategy = "auto",
     use_statistics: bool = True,
     rechunk: bool = True,
     low_memory: bool = False,
     cache: bool = True,
     storage_options=None,
-    retries: int = 0,
+    retries: int = 2,
+    include_file_paths: bool | None = False,
+    **kwargs,
 ) -> pl.LazyFrame:
     """
     # wrapper for pl.scan_parquet that prepends abfs:// to the path, injects user credentials from Synblob env variable, and sets hive to False
@@ -59,22 +62,41 @@ def pl_scan_pq(
     cache
         Cache the result after reading.
     retries
-        Number of retries if accessing a cloud instance fails."""
+        Number of retries if accessing a cloud instance fails.
+    include_file_paths
+        Include the path of the source file(s) as a column with this name."""
     if storage_options is None:
         storage_options = stor
-    return pl.scan_parquet(
-        f"abfs://{source}",
+    named = dict(
         n_rows=n_rows,
         cache=cache,
         parallel=parallel,
         rechunk=rechunk,
-        row_count_name=row_count_name,
-        row_count_offset=row_count_offset,
+        row_index_name=row_index_name,
+        row_index_offset=row_index_offset,
         low_memory=low_memory,
         use_statistics=use_statistics,
         retries=retries,
         storage_options=storage_options,
         hive_partitioning=False,
+        include_file_paths=include_file_paths,
+    )
+    renamed = [
+        ("row_index_name", "row_count_name"),
+        ("row_index_offset", "row_count_offset"),
+    ]
+    for rename in renamed:
+        for ordered in [-1, 1]:
+            if (
+                rename[::ordered][0] in signature(pl.scan_parquet).parameters.keys()
+                and rename[::ordered][1] in kwargs
+            ):
+                named[rename[::ordered][0]] = kwargs[rename[::ordered][1]]
+    assert isinstance(named, dict)
+
+    return pl.scan_parquet(
+        f"abfs://{source}",
+        **named,  # type: ignore
     )
 
 
@@ -90,7 +112,9 @@ def pl_scan_hive(
     low_memory: bool = False,
     cache: bool = True,
     storage_options=None,
-    retries: int = 0,
+    retries: int = 2,
+    include_file_paths: bool | None = False,
+    **kwargs,
 ) -> pl.LazyFrame:
     """
     # wrapper for pl.scan_parquet that prepends abfs:// to the path, injects user credentials from Synblob env variable, and sets hive to False
@@ -124,8 +148,7 @@ def pl_scan_hive(
         Number of retries if accessing a cloud instance fails."""
     if storage_options is None:
         storage_options = stor
-    return pl.scan_parquet(
-        f"abfs://{source}",
+    named = dict(
         n_rows=n_rows,
         cache=cache,
         parallel=parallel,
@@ -137,6 +160,22 @@ def pl_scan_hive(
         retries=retries,
         storage_options=storage_options,
         hive_partitioning=True,
+        include_file_paths=include_file_paths,
+    )
+    renamed = [
+        ("row_index_name", "row_count_name"),
+        ("row_index_offset", "row_count_offset"),
+    ]
+    for rename in renamed:
+        for ordered in [-1, 1]:
+            if (
+                rename[::ordered][0] in signature(pl.scan_parquet).parameters.keys()
+                and rename[::ordered][1] in kwargs
+            ):
+                named[rename[::ordered][0]] = kwargs[rename[::ordered][1]]
+
+    return pl.scan_parquet(
+        f"abfs://{source}",
     )
 
 
