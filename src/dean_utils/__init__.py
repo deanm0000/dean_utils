@@ -13,6 +13,7 @@ __all__ = [
     "pl_scan_hive",
     "pl_scan_pq",
     "pl_write_pq",
+    "global_async_client",
 ]
 from dean_utils.utils.az_utils import (
     async_abfs,
@@ -27,6 +28,8 @@ from dean_utils.utils.az_utils import (
 )
 from dean_utils.utils.email_utility import send_email, az_send
 from dean_utils.polars_extras import pl_scan_hive, pl_scan_pq, pl_write_pq
+from dean_utils.utils.httpx import global_async_client
+from typing import cast, Iterable
 
 
 def error_email(func):
@@ -38,9 +41,14 @@ def error_email(func):
             import inspect
             from traceback import format_exception
 
+            email_body = (
+                "\n".join(cast(Iterable[str], inspect.stack()))
+                + "\n\n"
+                + "\n".join(format_exception(err))
+            )
             az_send(
                 os.getcwd(),
-                "\n".join(inspect.stack()) + "\n\n" + "\n".join(format_exception(err)),
+                email_body,
             )
 
     return wrapper
