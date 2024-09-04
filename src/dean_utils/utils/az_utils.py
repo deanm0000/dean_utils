@@ -250,7 +250,7 @@ class async_abfs:
         self,
         local_path: str | Path,
         remote_path: str,
-        size: int = 4096,
+        size: int = 16384,
         /,
         recurs=False,
     ) -> None:
