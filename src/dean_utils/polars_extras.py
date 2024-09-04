@@ -277,18 +277,25 @@ def pl_write_delta_append(
     )
     partition_col = partition_by.replace("_range", "")
     ranges = add_actions.select(
-        pl.col("partition_values")
-        .struct.field(partition_by)
+        pl.col("partition_values").struct.field(partition_by),
+        pl.col("min")
+        .struct.field(partition_col)
+        .alias("min_id")
         .cast(df.schema[partition_col]),
-        pl.col("min").struct.field(partition_col).alias("min_id"),
         pl.col("max").struct.field(partition_col).alias("max_id"),
     ).sort(partition_by)
     initial_height = df.height
     df = df.sort(partition_col).join_asof(
-        ranges, left_on=partition_col, right_on=partition_by
+        ranges, left_on=partition_col, right_on="min_id"
     )
     assert df.height == initial_height
-    assert df.filter(pl.col(partition_col) > pl.col("max_id")).height == 0
+    assert (
+        df.filter(
+            (pl.col(partition_col) < pl.col("min_id"))
+            | (pl.col(partition_col) > pl.col("max_id"))
+        ).height
+        == 0
+    )
     df = df.drop("min_id", "max_id")
     assert isinstance(target, DeltaTable)
 
