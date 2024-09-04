@@ -291,7 +291,7 @@ def pl_write_delta_append(
     assert df.filter(pl.col(partition_col) > pl.col("max_id")).height == 0
     df = df.drop("min_id", "max_id")
     assert isinstance(target, DeltaTable)
-    target = target
+
     if delta_write_options is None:
         delta_write_options = {
             "writer_properties": WriterProperties(compression="ZSTD"),

@@ -1,6 +1,5 @@
 __all__ = [
     "async_abfs",
-    "cos_query_all",
     "clear_messages",
     "peek_messages",
     "get_queue_properties",
@@ -9,25 +8,28 @@ __all__ = [
     "delete_message",
     "send_email",
     "az_send",
-    "def_cos",
     "pl_scan_hive",
     "pl_scan_pq",
     "pl_write_pq",
+    "pl_write_delta_append",
     "global_async_client",
 ]
 from dean_utils.utils.az_utils import (
     async_abfs,
-    cos_query_all,
     peek_messages,
     get_queue_properties,
     send_message,
     update_queue,
     delete_message,
     clear_messages,
-    def_cos,
 )
 from dean_utils.utils.email_utility import send_email, az_send
-from dean_utils.polars_extras import pl_scan_hive, pl_scan_pq, pl_write_pq
+from dean_utils.polars_extras import (
+    pl_scan_hive,
+    pl_scan_pq,
+    pl_write_pq,
+    pl_write_delta_append,
+)
 from dean_utils.utils.httpx import global_async_client
 from typing import cast, Iterable
 
