@@ -1,4 +1,3 @@
-import re
 import os
 from azure.storage.queue.aio import QueueServiceClient as QSC
 from azure.storage.queue import TextBase64EncodePolicy
@@ -20,46 +19,6 @@ from pathlib import Path
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
 AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])
-
-
-def def_cos(db_name, client_name):
-    try:
-        from azure.cosmos.aio import CosmosClient
-
-        account_endpoint = re.search(
-            "(?<=AccountEndpoint=).+?(?=;)", os.environ["cosmos"]
-        )
-        master_key = re.search("(?<=AccountKey=).+?(?=$)", os.environ["cosmos"])
-        assert master_key is not None
-        assert account_endpoint is not None
-        return (
-            CosmosClient(
-                account_endpoint.group(),
-                {"masterKey": master_key.group()},
-            )
-            .get_database_client(db_name)
-            .get_container_client(client_name)
-        )
-    except ImportError:
-        raise ImportError("MS's cosmos sdk not installed")
-
-
-async def cos_query_all(cosdb, QRY):
-    if "offset" in QRY and "limit" in QRY:
-        raise ValueError(
-            "Safe query uses offset and limit for queries so original query can't use them"
-        )
-    n = 1
-    returns = []
-    while True:
-        SUBQRY = f"{QRY} offset {n} limit 1000"
-        this_bunch = [x async for x in cosdb.query_items(SUBQRY)]
-        returns.extend(this_bunch)
-        if len(this_bunch) < 1000:
-            break
-        else:
-            n += 1000
-    return returns
 
 
 async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):

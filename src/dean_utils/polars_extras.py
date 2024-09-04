@@ -7,9 +7,14 @@ from polars.type_aliases import (
 import pyarrow.parquet as pq
 import fsspec
 import os
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 from inspect import signature
+from pathlib import Path
 
+try:
+    from deltalake import DeltaTable, WriterProperties
+except ModuleNotFoundError:
+    pass
 abfs = fsspec.filesystem("abfss", connection_string=os.environ["Synblob"])
 
 key_conv = {"AccountName": "account_name", "AccountKey": "account_key"}
@@ -233,6 +238,81 @@ def pl_write_pq(
         with pq.ParquetWriter(file, **writer_params) as writer:
             for row_group in self.partition_by(row_group_part):
                 writer.write_table(row_group.to_arrow())
+
+
+def pl_write_delta_append(
+    df: pl.DataFrame,
+    target: str | Path | DeltaTable,
+    *,
+    storage_options: dict[str, str] | None = None,
+    delta_write_options: dict[str, Any] | None = None,
+):
+    """
+    Appends DataFrame to delta table and auto computes range partition.
+
+        Parameters
+        ----------
+        target
+            URI of a table or a DeltaTable object.
+        storage_options
+            Extra options for the storage backends supported by `deltalake`.
+            For cloud storages, this may include configurations for authentication etc.
+
+            - See a list of supported storage options for S3 `here <https://docs.rs/object_store/latest/object_store/aws/enum.AmazonS3ConfigKey.html#variants>`__.
+            - See a list of supported storage options for GCS `here <https://docs.rs/object_store/latest/object_store/gcp/enum.GoogleConfigKey.html#variants>`__.
+            - See a list of supported storage options for Azure `here <https://docs.rs/object_store/latest/object_store/azure/enum.AzureConfigKey.html#variants>`__.
+        delta_write_options
+            Additional keyword arguments while writing a Delta lake Table.
+            See a list of supported write options `here <https://delta-io.github.io/delta-rs/api/delta_writer/#deltalake.write_deltalake>`__.
+    """
+    if isinstance(target, (str, Path)):
+        target = DeltaTable(target, storage_options=storage_options)
+    add_actions = cast(pl.DataFrame, pl.from_arrow(target.get_add_actions()))
+    ### Only allows single column partition range
+    partition_by = (
+        add_actions.slice(1)
+        .select("partition_values")
+        .unnest("partition_values")
+        .columns[0]
+    )
+    partition_col = partition_by.replace("_range", "")
+    ranges = add_actions.select(
+        pl.col("partition_values")
+        .struct.field(partition_by)
+        .cast(df.schema[partition_col]),
+        pl.col("min").struct.field(partition_col).alias("min_id"),
+        pl.col("max").struct.field(partition_col).alias("max_id"),
+    ).sort(partition_by)
+    initial_height = df.height
+    df = df.sort(partition_col).join_asof(
+        ranges, left_on=partition_col, right_on=partition_by
+    )
+    assert df.height == initial_height
+    assert df.filter(pl.col(partition_col) > pl.col("max_id")).height == 0
+    df = df.drop("min_id", "max_id")
+    assert isinstance(target, DeltaTable)
+    target = target
+    if delta_write_options is None:
+        delta_write_options = {
+            "writer_properties": WriterProperties(compression="ZSTD"),
+            "engine": "rust",
+        }
+    else:
+        if "engine" not in delta_write_options:
+            delta_write_options["engine"] = "rust"
+        if "writer_properties" in delta_write_options:
+            if delta_write_options["writer_properties"].compression is None:
+                delta_write_options["writer_properties"].compression = "ZSTD(1)"
+        else:
+            delta_write_options["writer_properties"] = WriterProperties(
+                compression="ZSTD"
+            )
+    df.write_delta(
+        target=target,
+        mode="append",
+        storage_options=storage_options,
+        delta_write_options=delta_write_options,
+    )
 
 
 setattr(pl, "scan_pq", pl_scan_pq)
