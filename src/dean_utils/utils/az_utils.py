@@ -7,6 +7,7 @@ from azure.storage.blob.aio import BlobClient
 from azure.storage.blob import BlobBlock
 from azure.core.exceptions import HttpResponseError
 import asyncio
+from asyncio import _CoroutineLike
 from typing import List, Optional
 import fsspec
 import httpx
@@ -14,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TypeAlias, Literal
 from uuid import uuid4
 import json
+from typing import cast, IO
+from pathlib import Path
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
 AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])
@@ -23,16 +26,16 @@ def def_cos(db_name, client_name):
     try:
         from azure.cosmos.aio import CosmosClient
 
+        account_endpoint = re.search(
+            "(?<=AccountEndpoint=).+?(?=;)", os.environ["cosmos"]
+        )
+        master_key = re.search("(?<=AccountKey=).+?(?=$)", os.environ["cosmos"])
+        assert master_key is not None
+        assert account_endpoint is not None
         return (
             CosmosClient(
-                re.search(
-                    "(?<=AccountEndpoint=).+?(?=;)", os.environ["cosmos"]
-                ).group(),
-                {
-                    "masterKey": re.search(
-                        "(?<=AccountKey=).+?(?=$)", os.environ["cosmos"]
-                    ).group()
-                },
+                account_endpoint.group(),
+                {"masterKey": master_key.group()},
             )
             .get_database_client(db_name)
             .get_container_client(client_name)
@@ -90,17 +93,17 @@ async def send_message(
             for message in messages:
                 if not isinstance(message, str):
                     message = json.dumps(message)
-                tasks.append(
-                    asyncio.create_task(
-                        aio_client.send_message(
-                            message,
-                            visibility_timeout=visibility_timeout,
-                            time_to_live=time_to_live,
-                            timeout=timeout,
-                            **kwargs,
-                        )
-                    )
+                send_task = cast(
+                    _CoroutineLike,
+                    aio_client.send_message(
+                        message,
+                        visibility_timeout=visibility_timeout,
+                        time_to_live=time_to_live,
+                        timeout=timeout,
+                        **kwargs,
+                    ),
                 )
+                tasks.append(asyncio.create_task(send_task))
 
             await asyncio.wait(tasks)
             return tasks
@@ -217,6 +220,7 @@ class async_abfs:
             resp.raise_for_status()
             block_list = []
             async for chunk in resp.aiter_bytes():
+                chunk = cast(IO, chunk)
                 block_id = uuid4().hex
                 try:
                     await target.stage_block(block_id=block_id, data=chunk)
@@ -241,6 +245,63 @@ class async_abfs:
                         raise err
                 block_list.append(BlobBlock(block_id=block_id))
             await target.commit_block_list(block_list)
+
+    async def stream_up(
+        self,
+        local_path: str | Path,
+        remote_path: str,
+        size: int = 4096,
+        /,
+        recurs=False,
+    ) -> None:
+        """
+        Help on method stream_dl
+
+        async stream_dl(client, method, url, **httpx_extras)
+            Download file streaming in chunks in async as downloader and to a Blob
+
+            Parameters
+            ----------
+            local_path:
+                The full path to local path as str or Path
+            remote_path:
+                The full path to remote path as str
+            size:
+                The number of bytes read per iteration in read
+        """
+        if isinstance(local_path, str):
+            local_path = Path(local_path)
+        async with BlobClient.from_connection_string(
+            self.connection_string, *(remote_path.split("/", maxsplit=1))
+        ) as target:
+            with local_path.open("rb") as src:
+                block_list = []
+                while True:
+                    chunk = src.read(size)
+                    chunk = cast(IO, chunk)
+                    if not chunk:
+                        break
+                    block_id = uuid4().hex
+                    try:
+                        await target.stage_block(block_id=block_id, data=chunk)
+                    except HttpResponseError as err:
+                        if "The specified blob or block content is invalid." not in str(
+                            err
+                        ):
+                            raise err
+                        await asyncio.sleep(1)
+                        await target.commit_block_list([])
+                        await target.delete_blob()
+                        if recurs is False:
+                            await self.stream_up(
+                                local_path,
+                                remote_path,
+                                recurs=True,
+                            )
+                        else:
+                            raise err
+                    block_list.append(BlobBlock(block_id=block_id))
+                await target.commit_block_list(block_list)
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
