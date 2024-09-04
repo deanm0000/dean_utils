@@ -6,7 +6,7 @@ from azure.storage.blob.aio import BlobClient
 from azure.storage.blob import BlobBlock
 from azure.core.exceptions import HttpResponseError
 import asyncio
-from asyncio import _CoroutineLike
+
 from typing import List, Optional
 import fsspec
 import httpx
@@ -48,23 +48,18 @@ async def send_message(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
         if isinstance(messages, list):
-            tasks = []
-            for message in messages:
-                if not isinstance(message, str):
-                    message = json.dumps(message)
-                send_task = cast(
-                    _CoroutineLike,
+            tasks = await asyncio.gather(
+                *[
                     aio_client.send_message(
-                        message,
+                        message if isinstance(message, str) else json.dumps(message),
                         visibility_timeout=visibility_timeout,
                         time_to_live=time_to_live,
                         timeout=timeout,
                         **kwargs,
-                    ),
-                )
-                tasks.append(asyncio.create_task(send_task))
-
-            await asyncio.wait(tasks)
+                    )
+                    for message in messages
+                ]
+            )
             return tasks
         else:
             if not isinstance(messages, str):
