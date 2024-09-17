@@ -276,14 +276,18 @@ def pl_write_delta_append(
         .columns[0]
     )
     partition_col = partition_by.replace("_range", "")
-    ranges = add_actions.select(
-        pl.col("partition_values").struct.field(partition_by),
-        pl.col("min")
-        .struct.field(partition_col)
-        .alias("min_id")
-        .cast(df.schema[partition_col]),
-        pl.col("max").struct.field(partition_col).alias("max_id"),
-    ).sort(partition_by)
+    ranges = (
+        add_actions.select(
+            pl.col("partition_values").struct.field(partition_by),
+            pl.col("min")
+            .struct.field(partition_col)
+            .alias("min_id")
+            .cast(df.schema[partition_col]),
+            pl.col("max").struct.field(partition_col).alias("max_id"),
+        )
+        .unique()
+        .sort("min_id")
+    )
     initial_height = df.height
     df = df.sort(partition_col).join_asof(
         ranges, left_on=partition_col, right_on="min_id"
