@@ -296,7 +296,10 @@ def pl_write_delta_append(
     assert (
         df.filter(
             (pl.col(partition_col) < pl.col("min_id"))
-            | (pl.col(partition_col) > pl.col("max_id"))
+            | (
+                (pl.col(partition_col) > pl.col("max_id"))
+                & (pl.col("node_id_range") < pl.col("node_id_range").max())
+            )
         ).height
         == 0
     )
