@@ -1,13 +1,13 @@
 import os
 from azure.storage.queue.aio import QueueServiceClient as QSC
-from azure.storage.queue import TextBase64EncodePolicy
+from azure.storage.queue import TextBase64EncodePolicy, QueueMessage
 import azure.storage.blob as asb
 from azure.storage.blob.aio import BlobClient
 from azure.storage.blob import BlobBlock
 from azure.core.exceptions import HttpResponseError
 import asyncio
 
-from typing import List, Optional
+from typing import List, Optional, overload
 import fsspec
 import httpx
 from datetime import datetime, timedelta, timezone
@@ -35,6 +35,26 @@ async def get_queue_properties(queue: str, **kwargs):
         return await aio_client.get_queue_properties()
 
 
+@overload
+async def send_message(
+    queue: str,
+    messages: List[str],
+    *,
+    visibility_timeout: int | None = None,
+    time_to_live: int | None = None,
+    timeout: int | None = None,
+    **kwargs,
+) -> list[QueueMessage]: ...
+@overload
+async def send_message(
+    queue: str,
+    messages: str | dict,
+    *,
+    visibility_timeout: int | None = None,
+    time_to_live: int | None = None,
+    timeout: int | None = None,
+    **kwargs,
+) -> QueueMessage: ...
 async def send_message(
     queue: str,
     messages: List[str] | str | dict,
