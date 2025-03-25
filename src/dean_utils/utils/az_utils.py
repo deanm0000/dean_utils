@@ -1,24 +1,27 @@
-import os
-from azure.storage.queue.aio import QueueServiceClient as QSC
-from azure.storage.queue import TextBase64EncodePolicy, QueueMessage
-import azure.storage.blob as asb
-from azure.storage.blob.aio import BlobClient
-from azure.storage.blob import BlobBlock
-from azure.core.exceptions import HttpResponseError
-import asyncio
+from __future__ import annotations
 
-from typing import List, Optional, overload
-import fsspec
-import httpx
-from datetime import datetime, timedelta, timezone
-from typing import TypeAlias, Literal
-from uuid import uuid4
+import asyncio
 import json
-from typing import cast, IO
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import IO, TYPE_CHECKING, Literal, TypeAlias, cast, overload
+from uuid import uuid4
+
+import azure.storage.blob as asb
+import fsspec
+from azure.core.exceptions import HttpResponseError
+from azure.storage.blob import BlobBlock
+from azure.storage.blob.aio import BlobClient
+from azure.storage.queue import TextBase64EncodePolicy
+from azure.storage.queue.aio import QueueServiceClient as QSC
+
+if TYPE_CHECKING:
+    import httpx
+    from azure.storage.queue import QueueMessage
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
-AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])
+AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])  # noqa: SIM112
 
 
 async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
@@ -38,7 +41,7 @@ async def get_queue_properties(queue: str, **kwargs):
 @overload
 async def send_message(
     queue: str,
-    messages: List[str],
+    messages: list[str],
     *,
     visibility_timeout: int | None = None,
     time_to_live: int | None = None,
@@ -57,7 +60,7 @@ async def send_message(
 ) -> QueueMessage: ...
 async def send_message(
     queue: str,
-    messages: List[str] | str | dict,
+    messages: list[str] | str | dict,
     *,
     visibility_timeout: int | None = None,
     time_to_live: int | None = None,
@@ -146,7 +149,7 @@ async def clear_messages(
 
 
 class async_abfs:
-    def __init__(self, connection_string=os.environ["Synblob"]):
+    def __init__(self, connection_string=os.environ["Synblob"]):  # noqa: SIM112
         self.connection_string = connection_string
         self.sync = fsspec.filesystem("abfss", connection_string=self.connection_string)
         key_conv = {"AccountName": "account_name", "AccountKey": "account_key"}
@@ -154,9 +157,7 @@ class async_abfs:
             (splt := x.split("=", 1))[0]: splt[1]
             for x in self.connection_string.split(";")
         }
-        stor = {
-            key_conv[key]: val for key, val in stor.items() if key in key_conv.keys()
-        }
+        stor = {key_conv[key]: val for key, val in stor.items() if key in key_conv}
         self.stor = stor
 
     async def stream_dl(
@@ -170,13 +171,13 @@ class async_abfs:
         **httpx_extras,
     ) -> None:
         """
-        Help on method stream_dl
+        Help on method stream_dl.
 
         async stream_dl(client, method, url, **httpx_extras)
             Download file streaming in chunks in async as downloader and to a Blob
 
-            Parameters
-            ----------
+        Parameters
+        ----------
             client: httpx.AsyncClient
                 The httpx Async Client object to use
             method:
@@ -188,9 +189,12 @@ class async_abfs:
             **httpx_extras
                 Any extra arguments to be sent to client.stream
         """
-        async with BlobClient.from_connection_string(
-            self.connection_string, *(path.split("/", maxsplit=1))
-        ) as target, client.stream(method, url, **httpx_extras) as resp:
+        async with (
+            BlobClient.from_connection_string(
+                self.connection_string, *(path.split("/", maxsplit=1))
+            ) as target,
+            client.stream(method, url, **httpx_extras) as resp,
+        ):
             resp.raise_for_status()
             block_list = []
             async for chunk in resp.aiter_bytes():
@@ -202,7 +206,7 @@ class async_abfs:
                     if "The specified blob or block content is invalid." not in str(
                         err
                     ):
-                        raise err
+                        raise
                     await asyncio.sleep(1)
                     await target.commit_block_list([])
                     await target.delete_blob()
@@ -216,7 +220,7 @@ class async_abfs:
                             **httpx_extras,
                         )
                     else:
-                        raise err
+                        raise
                 block_list.append(BlobBlock(block_id=block_id))
             await target.commit_block_list(block_list)
 
@@ -229,13 +233,13 @@ class async_abfs:
         recurs=False,
     ) -> None:
         """
-        Help on method stream_dl
+        Help on method stream_dl.
 
         async stream_dl(client, method, url, **httpx_extras)
             Download file streaming in chunks in async as downloader and to a Blob
 
-            Parameters
-            ----------
+        Parameters
+        ----------
             local_path:
                 The full path to local path as str or Path
             remote_path:
@@ -262,7 +266,7 @@ class async_abfs:
                         if "The specified blob or block content is invalid." not in str(
                             err
                         ):
-                            raise err
+                            raise
                         await asyncio.sleep(1)
                         await target.commit_block_list([])
                         await target.delete_blob()
@@ -273,25 +277,25 @@ class async_abfs:
                                 recurs=True,
                             )
                         else:
-                            raise err
+                            raise
                     block_list.append(BlobBlock(block_id=block_id))
                 await target.commit_block_list(block_list)
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
-        Help on method _async_walk in module adlfs.spec:
+        Help on method _async_walk in module adlfs.spec.
 
-        async _async_walk(path: str, maxdepth=None, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
+        async _async_walk(path: str, maxdepth=None, **kwargs) method of AzureBlobFileSystem instance
             Return all files belows path
 
-            List all files, recursing into subdirectories; output is iterator-style,
+            list all files, recursing into subdirectories; output is iterator-style,
             like ``os.walk()``. For a simple list of files, ``find()`` is available.
 
             Note that the "files" outputted will include anything that is not
             a directory, such as links.
 
-            Parameters
-            ----------
+        Parameters
+        ----------
             path: str
                 Root to recurse into
 
@@ -308,7 +312,7 @@ class async_abfs:
 
     async def exists(self, path: str):
         """
-        Help on method _exists in module adlfs.spec:
+        Help on method _exists in module adlfs.spec.
 
         async _exists(path) method of adlfs.spec.AzureBlobFileSystem instance
             Is there a file at the given path
@@ -322,20 +326,23 @@ class async_abfs:
         self,
         contents,
         delimiter="/",
+        *,
         return_glob: bool = False,
         target_path="",
-        version_id: Optional[str] = None,
+        version_id: str | None = None,
         versions: bool = False,
         **kwargs,
     ):
         """
-        Help on method _details in module adlfs.spec:
+        Help on method _details in module adlfs.spec.
 
-        async _details(contents, delimiter='/', return_glob: bool = False, target_path='', version_id: Optional[str] = None, versions: bool = False, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
+        async _details(contents, delimiter='/', return_glob: bool = False, target_path='',
+        version_id: Optional[str] = None, versions: bool = False, **kwargs) method of
+            AzureBlobFileSystem instance
             Return a list of dictionaries of specifying details about the contents
 
-            Parameters
-            ----------
+        Parameters
+        ----------
             contents
 
             delimiter: str
@@ -349,9 +356,9 @@ class async_abfs:
             versions: bool
                 If True, return all versions
 
-            Returns
-            -------
-            List of dicts
+        Returns
+        -------
+            list of dicts
                 Returns details about the contents, such as name, size and type
         """
         this_fs = fsspec.filesystem(
@@ -378,7 +385,7 @@ class async_abfs:
         **kwargs,
     ):
         """
-        Copy single file to remote
+        Copy single file to remote.
 
         :param lpath: Path to local file
         :param rpath: Path to remote file
@@ -401,21 +408,24 @@ class async_abfs:
     async def ls(
         self,
         path: str,
+        *,
         detail: bool = False,
         delimiter: str = "/",
         return_glob: bool = False,
-        version_id: Optional[str] = None,
+        version_id: str | None = None,
         versions: bool = False,
         **kwargs,
     ):
         """
-        Help on method _ls in module adlfs.spec:
+        Help on method _ls in module adlfs.spec.
 
-        async _ls(path: str, detail: bool = False, invalidate_cache: bool = False, delimiter: str = '/', return_glob: bool = False, version_id: Optional[str] = None, versions: bool = False, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
+        async _ls(path: str, detail: bool = False, invalidate_cache: bool = False,
+        delimiter: str = '/', return_glob: bool = False, version_id: Optional[str] = None,
+        versions: bool = False, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
             Create a list of blob names from a blob container
 
-            Parameters
-            ----------
+        Parameters
+        ----------
             path: str
                 Path to an Azure Blob with its container name
 

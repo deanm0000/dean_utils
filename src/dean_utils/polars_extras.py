@@ -1,28 +1,34 @@
-import polars as pl
-from polars.type_aliases import (
-    ParallelStrategy,
-    ParquetCompression,
-    ColumnNameOrSelector,
-)
-import pyarrow.parquet as pq
-import fsspec
+from __future__ import annotations
+
+import contextlib
 import os
-from typing import Any, Sequence, cast
 from inspect import signature
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
-try:
-    from deltalake import DeltaTable, WriterProperties
-except ModuleNotFoundError:
-    pass
-abfs = fsspec.filesystem("abfss", connection_string=os.environ["Synblob"])
+import fsspec
+import polars as pl
+import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from deltalake import DeltaTable
+    from polars.type_aliases import (
+        ColumnNameOrSelector,
+        ParallelStrategy,
+        ParquetCompression,
+    )
+
+
+abfs = fsspec.filesystem("abfss", connection_string=os.environ["Synblob"])  # noqa: SIM112
 
 key_conv = {"AccountName": "account_name", "AccountKey": "account_key"}
-stor = {(splt := x.split("=", 1))[0]: splt[1] for x in os.environ["Synblob"].split(";")}
-stor = {key_conv[key]: val for key, val in stor.items() if key in key_conv.keys()}
+stor = {(splt := x.split("=", 1))[0]: splt[1] for x in os.environ["Synblob"].split(";")}  # noqa: SIM112
+stor = {key_conv[key]: val for key, val in stor.items() if key in key_conv}
 
 
-def pl_scan_pq(
+def pl_scan_pq(  # noqa: D417
     source: str,
     *,
     n_rows: int | None = None,
@@ -39,7 +45,10 @@ def pl_scan_pq(
     **kwargs,
 ) -> pl.LazyFrame:
     """
-    # wrapper for pl.scan_parquet that prepends abfs:// to the path, injects user credentials from Synblob env variable, and sets hive to False
+    Wrapper for pl.scan_parquet.
+
+    Prepends abfs:// to the path, injects user credentials from
+    Synblob env variable, and sets hive to False.
 
     Parameters
     ----------
@@ -69,23 +78,24 @@ def pl_scan_pq(
     retries
         Number of retries if accessing a cloud instance fails.
     include_file_paths
-        Include the path of the source file(s) as a column with this name."""
+        Include the path of the source file(s) as a column with this name.
+    """
     if storage_options is None:
         storage_options = stor
-    named = dict(
-        n_rows=n_rows,
-        cache=cache,
-        parallel=parallel,
-        rechunk=rechunk,
-        row_index_name=row_index_name,
-        row_index_offset=row_index_offset,
-        low_memory=low_memory,
-        use_statistics=use_statistics,
-        retries=retries,
-        storage_options=storage_options,
-        hive_partitioning=False,
-        include_file_paths=include_file_paths,
-    )
+    named = {
+        "n_rows": n_rows,
+        "cache": cache,
+        "parallel": parallel,
+        "rechunk": rechunk,
+        "row_index_name": row_index_name,
+        "row_index_offset": row_index_offset,
+        "low_memory": low_memory,
+        "use_statistics": use_statistics,
+        "retries": retries,
+        "storage_options": storage_options,
+        "hive_partitioning": False,
+        "include_file_paths": include_file_paths,
+    }
     renamed = [
         ("row_index_name", "row_count_name"),
         ("row_index_offset", "row_count_offset"),
@@ -93,7 +103,7 @@ def pl_scan_pq(
     for rename in renamed:
         for ordered in [-1, 1]:
             if (
-                rename[::ordered][0] in signature(pl.scan_parquet).parameters.keys()
+                rename[::ordered][0] in signature(pl.scan_parquet).parameters
                 and rename[::ordered][1] in kwargs
             ):
                 named[rename[::ordered][0]] = kwargs[rename[::ordered][1]]
@@ -105,7 +115,7 @@ def pl_scan_pq(
     )
 
 
-def pl_scan_hive(
+def pl_scan_hive(  # noqa: D417
     source: str,
     *,
     n_rows: int | None = None,
@@ -122,7 +132,9 @@ def pl_scan_hive(
     **kwargs,
 ) -> pl.LazyFrame:
     """
-    # wrapper for pl.scan_parquet that prepends abfs:// to the path, injects user credentials from Synblob env variable, and sets hive to False
+    Wrapper for pl.scan_parquet that prepends abfs:// to the path.
+
+    Injects user credentials from Synblob env variable, and sets hive to False.
 
     Parameters
     ----------
@@ -150,23 +162,24 @@ def pl_scan_hive(
     cache
         Cache the result after reading.
     retries
-        Number of retries if accessing a cloud instance fails."""
+        Number of retries if accessing a cloud instance fails.
+    """
     if storage_options is None:
         storage_options = stor
-    named = dict(
-        n_rows=n_rows,
-        cache=cache,
-        parallel=parallel,
-        rechunk=rechunk,
-        row_count_name=row_count_name,
-        row_count_offset=row_count_offset,
-        low_memory=low_memory,
-        use_statistics=use_statistics,
-        retries=retries,
-        storage_options=storage_options,
-        hive_partitioning=True,
-        include_file_paths=include_file_paths,
-    )
+    named = {
+        "n_rows": n_rows,
+        "cache": cache,
+        "parallel": parallel,
+        "rechunk": rechunk,
+        "row_count_name": row_count_name,
+        "row_count_offset": row_count_offset,
+        "low_memory": low_memory,
+        "use_statistics": use_statistics,
+        "retries": retries,
+        "storage_options": storage_options,
+        "hive_partitioning": True,
+        "include_file_paths": include_file_paths,
+    }
     renamed = [
         ("row_index_name", "row_count_name"),
         ("row_index_offset", "row_count_offset"),
@@ -174,7 +187,7 @@ def pl_scan_hive(
     for rename in renamed:
         for ordered in [-1, 1]:
             if (
-                rename[::ordered][0] in signature(pl.scan_parquet).parameters.keys()
+                rename[::ordered][0] in signature(pl.scan_parquet).parameters
                 and rename[::ordered][1] in kwargs
             ):
                 named[rename[::ordered][0]] = kwargs[rename[::ordered][1]]
@@ -184,7 +197,7 @@ def pl_scan_hive(
     )
 
 
-def pl_write_pq(
+def pl_write_pq(  # noqa: D417
     self,
     file: str,
     *,
@@ -196,6 +209,7 @@ def pl_write_pq(
 ) -> None:
     """
     Write to Apache Parquet file with pyarrow writer.
+
     Defaults to writing to Azure cloud as defined by Synblob env variable.
 
     Parameters
@@ -240,7 +254,7 @@ def pl_write_pq(
                 writer.write_table(row_group.to_arrow())
 
 
-def pl_write_delta_append(
+def pl_write_delta_append(  # noqa: D417
     df: pl.DataFrame,
     target: str | Path | DeltaTable,
     *,
@@ -250,8 +264,10 @@ def pl_write_delta_append(
     """
     Appends DataFrame to delta table and auto computes range partition.
 
-        Parameters
-        ----------
+    Parameters
+    ----------
+        df
+            df to be saved
         target
             URI of a table or a DeltaTable object.
         storage_options
@@ -265,6 +281,8 @@ def pl_write_delta_append(
             Additional keyword arguments while writing a Delta lake Table.
             See a list of supported write options `here <https://delta-io.github.io/delta-rs/api/delta_writer/#deltalake.write_deltalake>`__.
     """
+    from deltalake import DeltaTable, WriterProperties
+
     if isinstance(target, (str, Path)):
         target = DeltaTable(target, storage_options=storage_options)
     add_actions = cast(pl.DataFrame, pl.from_arrow(target.get_add_actions()))
@@ -294,7 +312,7 @@ def pl_write_delta_append(
         ranges, left_on=partition_col, right_on="min_id"
     )
     assert df.height == initial_height
-    assert df.filter((pl.col(partition_col) < pl.col("min_id"))).height == 0
+    assert df.filter(pl.col(partition_col) < pl.col("min_id")).height == 0
     df = df.drop("min_id", "max_id")
     assert isinstance(target, DeltaTable)
 
@@ -321,8 +339,8 @@ def pl_write_delta_append(
     )
 
 
-setattr(pl, "scan_pq", pl_scan_pq)
-setattr(pl, "scan_hive", pl_scan_hive)
+setattr(pl, "scan_pq", pl_scan_pq)  # noqa: B010
+setattr(pl, "scan_hive", pl_scan_hive)  # noqa: B010
 DF = pl.DataFrame
-setattr(DF, "write_pq", pl_write_pq)
-setattr(pl, "DataFrame", DF)
+setattr(DF, "write_pq", pl_write_pq)  # noqa: B010
+setattr(pl, "DataFrame", DF)  # noqa: B010

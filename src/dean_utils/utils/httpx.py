@@ -1,17 +1,28 @@
-from httpx import Timeout, Limits, AsyncBaseTransport, AsyncClient
-from httpx._types import (
-    AuthTypes,
-    QueryParamTypes,
-    HeaderTypes,
-    CookieTypes,
-    VerifyTypes,
-    CertTypes,
-    ProxyTypes,
-    ProxiesTypes,
-    TimeoutTypes,
-    URLTypes,
-)
+from __future__ import annotations
+
 import typing
+
+from httpx import AsyncClient, Limits, Timeout
+
+if typing.TYPE_CHECKING:
+    import ssl
+
+    from httpx import AsyncBaseTransport
+    from httpx._types import (
+        AuthTypes,
+        CertTypes,
+        CookieTypes,
+        HeaderTypes,
+        ProxiesTypes,
+        ProxyTypes,
+        QueryParamTypes,
+        TimeoutTypes,
+        URLTypes,
+    )
+_default_limit = Limits(
+    max_connections=100, max_keepalive_connections=20, keepalive_expiry=5.0
+)
+_default_timeout = Timeout(timeout=5.0)
 
 
 def global_async_client(
@@ -21,18 +32,16 @@ def global_async_client(
     params: QueryParamTypes | None = None,
     headers: HeaderTypes | None = None,
     cookies: CookieTypes | None = None,
-    verify: VerifyTypes = True,
+    verify: ssl.SSLContext | str | bool = True,
     cert: CertTypes | None = None,
     http1: bool = True,
     http2: bool = False,
     proxy: ProxyTypes | None = None,
     proxies: ProxiesTypes | None = None,
     mounts: None | typing.Mapping[str, AsyncBaseTransport | None] = None,
-    timeout: TimeoutTypes = Timeout(timeout=5.0),
+    timeout: TimeoutTypes = _default_timeout,
     follow_redirects: bool = False,
-    limits: Limits = Limits(
-        max_connections=100, max_keepalive_connections=20, keepalive_expiry=5.0
-    ),
+    limits: Limits = _default_limit,
     max_redirects: int = 20,
     event_hooks: None
     | typing.Mapping[str, list[typing.Callable[..., typing.Any]]] = None,
