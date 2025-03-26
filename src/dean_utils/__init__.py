@@ -40,23 +40,29 @@ from dean_utils.utils.email_utility import az_send, send_email
 from dean_utils.utils.httpx import global_async_client
 
 
-def error_email(func):
+def error_email(func, attempts=1):
     def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as err:
-            import inspect
-            import os
-            from traceback import format_exception
+        subject = None
+        errors = []
+        for _ in range(attempts):
+            try:
+                return func(*args, **kwargs)
+            except Exception as err:
+                import inspect
+                from pathlib import Path
+                from traceback import format_exception
 
-            email_body = (
-                "\n".join(cast(Iterable[str], inspect.stack()))
-                + "\n\n"
-                + "\n".join(format_exception(err))
-            )
+                if subject is None:
+                    subject = Path.cwd()
+                errors.append(
+                    "\n".join(cast(Iterable[str], inspect.stack()))
+                    + "\n\n"
+                    + "\n".join(format_exception(err))
+                )
+        if subject is not None:
             az_send(
-                os.getcwd(),  # noqa: PTH109
-                email_body,
+                str(subject),
+                "\n".join(errors),
             )
 
     return wrapper
