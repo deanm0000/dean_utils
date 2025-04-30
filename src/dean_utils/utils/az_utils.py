@@ -160,6 +160,24 @@ class async_abfs:
         stor = {key_conv[key]: val for key, val in stor.items() if key in key_conv}
         self.stor = stor
 
+    async def from_url(
+        self,
+        source_url: str,
+        path: str,
+        metadata: dict[str, str] | None = None,
+        *,
+        incremental_copy: bool = False,
+        **kwargs,
+    ) -> dict[str, str | datetime]:
+        async with (
+            BlobClient.from_connection_string(
+                self.connection_string, *(path.split("/", maxsplit=1))
+            ) as target,
+        ):
+            return await target.start_copy_from_url(
+                source_url, metadata, incremental_copy=incremental_copy, **kwargs
+            )
+
     async def stream_dl(
         self,
         client: httpx.AsyncClient,
