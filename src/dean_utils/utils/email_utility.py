@@ -1,50 +1,12 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.header import Header
-import ssl
+from __future__ import annotations
+
 import os
+
 from azure.communication.email import EmailClient
 
 
 class MissingEnvVars(Exception):
     pass
-
-
-def send_email(from_email: str, to_email: str, subject: str, msg: str) -> None:
-    """
-    # Send email using smtp.gmail.com, password must be stored in env variable gmail_pw
-
-    Parameters
-    ----------
-    from_email : str
-        The email address from which the email will originate
-    to_email : str
-        The email address recipient
-    subject : str
-        The subject of the email
-    msg : str
-        The body of the email
-
-    Returns
-    -------
-    No return
-
-    """
-    mimemsg = MIMEMultipart("alternative")
-    mimemsg.set_charset("utf8")
-    mimemsg["FROM"] = from_email
-    mimemsg["To"] = to_email
-    mimemsg["Subject"] = Header(subject, "utf-8")
-    while msg.find("  ") > 0:
-        msg = msg.replace("  ", " \u2800")
-    msg = msg.replace("\n", "<br>")
-    mimemsg.attach(MIMEText(msg.encode("utf-8"), "html", "UTF-8"))
-    with smtplib.SMTP_SSL(
-        "smtp.gmail.com", 465, context=ssl.create_default_context()
-    ) as server:
-        server.login(from_email, os.environ["gmail_pw"])
-        server.sendmail(from_email, to_email, mimemsg.as_string())
 
 
 try:
@@ -61,7 +23,8 @@ def az_send(
     to_email: str | None = None,
 ) -> None:
     if email_client is None:
-        raise MissingEnvVars("missing azuremail var")
+        msg = "missing azuremail var"
+        raise MissingEnvVars(msg)
     if os.environ["error_email"] is not None and to_email is None:
         to_email = os.environ["error_email"]
     if os.environ["from_email"] is not None and from_email is None:
@@ -74,9 +37,9 @@ def az_send(
     if html is not None:
         content["html"] = html
     email_client.begin_send(
-        dict(
-            senderAddress=from_email,
-            recipients=dict(to=[{"address": to_email}]),
-            content=content,
-        )
+        {
+            "senderAddress": from_email,
+            "recipients": {"to": [{"address": to_email}]},
+            "content": content,
+        }
     )

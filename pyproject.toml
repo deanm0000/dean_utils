@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dean_utils"
-version="0.0.51"
+version="0.0.52"
 authors=[
     { name="Dean MacGregor", email="powertrading121@gmail.com"}
 ]
@@ -80,7 +80,7 @@ ignore = [
   # Lints below are turned off because of conflicts with the ruff formatter
   "D206",
   "W191",
-  "D100", "D101", "D102", "D103"
+  "D100", "D101", "D102", "D103", "SIM112"
 ]
 
 [tool.ruff.lint.pycodestyle]

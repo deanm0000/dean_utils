@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import azure.storage.blob as asb
 import fsspec
+from aiopath import AsyncPath
 from azure.core.exceptions import HttpResponseError
 from azure.storage.blob import BlobBlock
 from azure.storage.blob.aio import BlobClient
@@ -18,10 +19,11 @@ from azure.storage.queue.aio import QueueServiceClient as QSC
 
 if TYPE_CHECKING:
     import httpx
+    from azure.storage.blob.aio import StorageStreamDownloader
     from azure.storage.queue import QueueMessage
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
-AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])  # noqa: SIM112
+AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])
 
 
 async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
@@ -149,7 +151,7 @@ async def clear_messages(
 
 
 class async_abfs:
-    def __init__(self, connection_string=os.environ["Synblob"]):  # noqa: SIM112
+    def __init__(self, connection_string=os.environ["Synblob"]):
         self.connection_string = connection_string
         self.sync = fsspec.filesystem("abfss", connection_string=self.connection_string)
         key_conv = {"AccountName": "account_name", "AccountKey": "account_key"}
@@ -189,13 +191,12 @@ class async_abfs:
         **httpx_extras,
     ) -> None:
         """
-        Help on method stream_dl.
+        stream_dl will stream the contents of a url to a path in the cloud given an httpx Client.
 
-        async stream_dl(client, method, url, **httpx_extras)
+        async stream_dl(client, method, url, path, recurs, **httpx_extras)
             Download file streaming in chunks in async as downloader and to a Blob
 
-        Parameters
-        ----------
+        Args:
             client: httpx.AsyncClient
                 The httpx Async Client object to use
             method:
@@ -204,7 +205,9 @@ class async_abfs:
                 The URL to download
             path:
                 The full path to Azure file being saved
-            **httpx_extras
+            recurs:
+                To try again recursively
+            httpx_extras
                 Any extra arguments to be sent to client.stream
         """
         async with (
@@ -216,7 +219,7 @@ class async_abfs:
             resp.raise_for_status()
             block_list = []
             async for chunk in resp.aiter_bytes():
-                chunk = cast(IO, chunk)
+                chunk = cast("IO", chunk)
                 block_id = uuid4().hex
                 try:
                     await target.stage_block(block_id=block_id, data=chunk)
@@ -244,60 +247,63 @@ class async_abfs:
 
     async def stream_up(
         self,
-        local_path: str | Path,
+        local_path: str | Path | AsyncPath,
         remote_path: str,
         size: int = 16384,
         /,
         recurs=False,
     ) -> None:
         """
-        Help on method stream_dl.
+        Help on method stream_up.
 
-        async stream_dl(client, method, url, **httpx_extras)
+        async stream_up(local_path, remote_path, size, recurs)
             Download file streaming in chunks in async as downloader and to a Blob
 
-        Parameters
-        ----------
+        Args:
             local_path:
                 The full path to local path as str or Path
             remote_path:
                 The full path to remote path as str
             size:
                 The number of bytes read per iteration in read
+            recurs:
+                To try again recursively
         """
-        if isinstance(local_path, str):
-            local_path = Path(local_path)
-        async with BlobClient.from_connection_string(
-            self.connection_string, *(remote_path.split("/", maxsplit=1))
-        ) as target:
-            with local_path.open("rb") as src:
-                block_list = []
-                while True:
-                    chunk = src.read(size)
-                    chunk = cast(IO, chunk)
-                    if not chunk:
-                        break
-                    block_id = uuid4().hex
-                    try:
-                        await target.stage_block(block_id=block_id, data=chunk)
-                    except HttpResponseError as err:
-                        if "The specified blob or block content is invalid." not in str(
-                            err
-                        ):
-                            raise
-                        await asyncio.sleep(1)
-                        await target.commit_block_list([])
-                        await target.delete_blob()
-                        if recurs is False:
-                            await self.stream_up(
-                                local_path,
-                                remote_path,
-                                recurs=True,
-                            )
-                        else:
-                            raise
-                    block_list.append(BlobBlock(block_id=block_id))
-                await target.commit_block_list(block_list)
+        if isinstance(local_path, (str, Path)):
+            local_path = AsyncPath(local_path)
+        async with (
+            BlobClient.from_connection_string(
+                self.connection_string, *(remote_path.split("/", maxsplit=1))
+            ) as target,
+            local_path.open("rb") as src,
+        ):
+            block_list = []
+            while True:
+                chunk = await src.read(size)
+                chunk = cast("IO", chunk)
+                if not chunk:
+                    break
+                block_id = uuid4().hex
+                try:
+                    await target.stage_block(block_id=block_id, data=chunk)
+                except HttpResponseError as err:
+                    if "The specified blob or block content is invalid." not in str(
+                        err
+                    ):
+                        raise
+                    await asyncio.sleep(1)
+                    await target.commit_block_list([])
+                    await target.delete_blob()
+                    if recurs is False:
+                        await self.stream_up(
+                            local_path,
+                            remote_path,
+                            recurs=True,
+                        )
+                    else:
+                        raise
+                block_list.append(BlobBlock(block_id=block_id))
+            await target.commit_block_list(block_list)
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
@@ -312,8 +318,7 @@ class async_abfs:
             Note that the "files" outputted will include anything that is not
             a directory, such as links.
 
-        Parameters
-        ----------
+        Args:
             path: str
                 Root to recurse into
 
@@ -321,7 +326,8 @@ class async_abfs:
                 Maximum recursion depth. None means limitless, but not recommended
                 on link-based file-systems.
 
-            **kwargs are passed to ``ls``
+            kwargs:
+                dict of args passed to ``ls``
         """
         this_fs = fsspec.filesystem(
             "abfss", connection_string=self.connection_string, asyncronous=True
@@ -359,8 +365,7 @@ class async_abfs:
             AzureBlobFileSystem instance
             Return a list of dictionaries of specifying details about the contents
 
-        Parameters
-        ----------
+        Args:
             contents
 
             delimiter: str
@@ -442,8 +447,7 @@ class async_abfs:
         versions: bool = False, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
             Create a list of blob names from a blob container
 
-        Parameters
-        ----------
+        Args:
             path: str
                 Path to an Azure Blob with its container name
 
@@ -486,8 +490,7 @@ class async_abfs:
         """
         Delete files.
 
-        Parameters
-        ----------
+        Args:
         path: str or list of str
             File(s) to delete.
         recursive: bool
@@ -538,3 +541,10 @@ class async_abfs:
             expiry=expiry,
         )
         return f"https://{account_dict['AccountName']}.blob.core.windows.net/{filepath}?{sas}"
+
+    async def stream(self, path: str) -> StorageStreamDownloader[bytes]:
+        blob = BlobClient.from_connection_string(
+            self.connection_string, *(path.split("/", maxsplit=1))
+        )
+        stream = await blob.download_blob()
+        return stream
