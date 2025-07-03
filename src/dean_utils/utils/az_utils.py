@@ -521,7 +521,14 @@ class async_abfs:
             expand_path=expand_path,
         )
 
-    def make_sas_link(self, filepath, expiry=None, write=False):
+    def make_sas_link(
+        self,
+        filepath: str,
+        expiry: datetime | None = None,
+        *,
+        write: bool = False,
+        content_disposition_filename: str | None = None,
+    ):
         account_dict = {
             x.split("=", 1)[0]: x.split("=", 1)[1]
             for x in self.connection_string.split(";")
@@ -532,6 +539,12 @@ class async_abfs:
             expiry = datetime(2050, 1, 1, tzinfo=timezone.utc)
         if isinstance(expiry, str):
             expiry = datetime.fromisoformat(expiry)
+        if content_disposition_filename is None:
+            content_disposition = None
+        else:
+            content_disposition = (
+                f'attachment; filename="{content_disposition_filename}"'
+            )
         sas = asb.generate_blob_sas(
             account_name=account_dict["AccountName"],
             account_key=account_dict["AccountKey"],
@@ -539,6 +552,7 @@ class async_abfs:
             blob_name=filepath.split("/", 1)[1],
             permission=asb.BlobSasPermissions(read=True, write=write),
             expiry=expiry,
+            content_disposition=content_disposition,
         )
         return f"https://{account_dict['AccountName']}.blob.core.windows.net/{filepath}?{sas}"
 
