@@ -17,6 +17,7 @@ except:  # noqa: E722
 
 def az_send(
     subject: str | None = None,
+    *,
     msg: str | None = None,
     html: str | None = None,
     from_email: str | None = None,
@@ -25,9 +26,9 @@ def az_send(
     if email_client is None:
         msg = "missing azuremail var"
         raise MissingEnvVars(msg)
-    if os.environ["error_email"] is not None and to_email is None:
+    if os.environ.get("error_email") is not None and to_email is None:
         to_email = os.environ["error_email"]
-    if os.environ["from_email"] is not None and from_email is None:
+    if os.environ.get("from_email") is not None and from_email is None:
         from_email = os.environ["from_email"]
     content = {}
     if subject is not None:
