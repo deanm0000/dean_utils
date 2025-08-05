@@ -24,10 +24,26 @@ if TYPE_CHECKING:
     from azure.storage.queue import QueueMessage
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
-AIO_SERVE = QSC.from_connection_string(conn_str=os.environ["AzureWebJobsStorage"])
+if (conn_str := os.environ.get("AzureWebJobsStorage")) is not None:
+    AIO_SERVE = QSC.from_connection_string(conn_str=conn_str)
+elif (
+    account_url := os.environ.get("AzureWebJobsStorage__queueServiceUri")
+) is not None:
+    try:
+        from azure.identity.aio import DefaultAzureCredential
+
+        credential = DefaultAzureCredential()
+        AIO_SERVE = QSC(account_url=account_url, credential=credential)
+    except ImportError as err:
+        GLOBAL_ERR = err
+        AIO_SERVE = None
+else:
+    AIO_SERVE = None
 
 
 async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
@@ -35,6 +51,8 @@ async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
 
 
 async def get_queue_properties(queue: str, **kwargs):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
@@ -70,6 +88,8 @@ async def send_message(
     timeout: int | None = None,
     **kwargs,
 ):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
@@ -109,6 +129,8 @@ async def update_queue(
     timeout: int | None = None,
     **kwargs,
 ):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
@@ -129,6 +151,8 @@ async def delete_message(
     pop_receipt,
     **kwargs,
 ):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
@@ -144,6 +168,8 @@ async def clear_messages(
     queue,
     **kwargs,
 ):
+    if AIO_SERVE is None:
+        raise GLOBAL_ERR
     async with AIO_SERVE.get_queue_client(
         queue, message_encode_policy=TextBase64EncodePolicy()
     ) as aio_client:
