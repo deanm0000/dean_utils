@@ -32,7 +32,10 @@ elif (
     try:
         from azure.identity.aio import DefaultAzureCredential
 
-        credential = DefaultAzureCredential()
+        kwargs = {}
+        if (client_id := os.environ.get("AzureWebJobsStorage__clientId")) is not None:
+            kwargs["managed_identity_client_id"] = client_id
+        credential = DefaultAzureCredential(**kwargs)
         AIO_SERVE = QSC(account_url=account_url, credential=credential)
     except ImportError as err:
         GLOBAL_ERR = err
