@@ -61,7 +61,7 @@ def error_email(func, attempts=1):
 
         az_send(
             str(subject),
-            "\n".join(errors),
+            msg="\n".join(errors),
         )
 
     return wrapper
