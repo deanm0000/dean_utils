@@ -490,31 +490,16 @@ class async_abfs:
         ):
             resp.raise_for_status()
             block_list = []
+            tasks = set()
+            accum = bytearray()
             async for chunk in resp.aiter_bytes():
-                chunk = cast("IO", chunk)
-                block_id = uuid4().hex
-                try:
-                    await target.stage_block(block_id=block_id, data=chunk)
-                except HttpResponseError as err:
-                    if "The specified blob or block content is invalid." not in str(
-                        err
-                    ):
-                        raise
-                    await asyncio.sleep(1)
-                    await target.commit_block_list([])
-                    await target.delete_blob()
-                    if recurs is False:
-                        await self.stream_dl(
-                            client,
-                            method,
-                            url,
-                            path,
-                            recurs=True,
-                            **httpx_extras,
-                        )
-                    else:
-                        raise
-                block_list.append(BlobBlock(block_id=block_id))
+                accum.extend(chunk)
+                if len(accum) >= 256000:
+                    _block_task(tasks, target, block_list, bytes(accum))
+                    accum = bytearray()
+            if len(accum) > 0:
+                _block_task(tasks, target, block_list, bytes(accum))
+            await asyncio.wait(tasks)
             await target.commit_block_list(block_list)
 
     async def stream_up(
@@ -834,3 +819,18 @@ class async_abfs:
         )
         stream = await blob.download_blob()
         return stream
+
+
+async def _stage_block(target: BlobClient, block_id: str, chunk: bytes):
+    return await target.stage_block(block_id=block_id, data=cast("IO", chunk))
+
+
+def _block_task(
+    tasks: set[asyncio.Task],
+    target: BlobClient,
+    block_list: list[BlobBlock],
+    chunk: bytes,
+):
+    block_id = uuid4().hex
+    tasks.add(asyncio.create_task(_stage_block(target, block_id, chunk)))
+    block_list.append(BlobBlock(block_id=block_id))
