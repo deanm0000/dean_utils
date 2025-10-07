@@ -76,7 +76,7 @@ def stor_opts(os_env: str = "Synblob") -> dict[str, str]:
     return {
         k: y[1]
         for x in conn_str.split(";")
-        if (k := _name_key((y := x.split("="))[0])) is not None
+        if (k := _name_key((y := x.split("=", maxsplit=1))[0])) is not None
     }
 
 
