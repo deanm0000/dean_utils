@@ -74,7 +74,7 @@ def error_email(func, attempts=1):
 
 ACCOUNT_NAME = Literal["account_name"]
 ACCOUNT_KEY = Literal["account_key"]
-STORAGE_OPTIONS = dict[Literal["account_name"] | Literal["account_key"], str]
+STORAGE_OPTIONS = dict[str, str]
 
 
 def stor_opts(
