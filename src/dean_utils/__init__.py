@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __all__ = [
     "async_abfs",
     "az_send",
@@ -14,6 +16,7 @@ __all__ = [
     "update_queue",
 ]
 import contextlib
+import os
 
 from dean_utils.polars_extras import (
     pl_scan_hive,
@@ -65,3 +68,22 @@ def error_email(func, attempts=1):
         )
 
     return wrapper
+
+
+def stor_opts(os_env: str = "Synblob") -> dict[str, str]:
+    conn_str = os.environ.get(os_env)
+    assert conn_str is not None
+    return {
+        k: y[1]
+        for x in conn_str.split(";")
+        if (k := _name_key((y := x.split("="))[0])) is not None
+    }
+
+
+def _name_key(x: str) -> str | None:
+    if x == "AccountName":
+        return "account_name"
+    elif x == "AccountKey":
+        return "account_key"
+    else:
+        return None
