@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, TypeAlias, cast
+
 __all__ = [
     "async_abfs",
     "az_send",
@@ -70,14 +72,22 @@ def error_email(func, attempts=1):
     return wrapper
 
 
-def stor_opts(os_env: str = "Synblob") -> dict[str, str]:
+ACCOUNT_NAME = Literal["account_name"]
+ACCOUNT_KEY = Literal["account_key"]
+STORAGE_OPTIONS = dict[Literal["account_name"] | Literal["account_key"], str]
+
+
+def stor_opts(
+    os_env: str = "Synblob",
+) -> STORAGE_OPTIONS:
     conn_str = os.environ.get(os_env)
     assert conn_str is not None
-    return {
+    res = {
         k: y[1]
         for x in conn_str.split(";")
         if (k := _name_key((y := x.split("=", maxsplit=1))[0])) is not None
     }
+    return cast("STORAGE_OPTIONS", res)
 
 
 def _name_key(x: str) -> str | None:
@@ -87,3 +97,12 @@ def _name_key(x: str) -> str | None:
         return "account_key"
     else:
         return None
+
+
+def stor_opts_dict(
+    os_env: str = "Synblob",
+) -> dict[
+    Literal["storage_options"],
+    STORAGE_OPTIONS,
+]:
+    return {"storage_options": stor_opts(os_env)}
