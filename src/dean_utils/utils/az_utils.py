@@ -180,6 +180,44 @@ async def clear_messages(
         return task
 
 
+class QueueRetry:
+    """
+    Async Context handler that creates a queue message on open and then deletes it on close.
+
+    The use case for this is an Azure Functions which might timeout. There's no try except way
+    to deal with a forced timeout since the script is simply killed. With this, a queue message can
+    be used to trigger a retry (or a different script entirely).
+
+    You specify how long until the message should be acted upon, generally, 10 minutes less elapsed
+    time in seconds. If the AZ Func finishes like normal then the created message gets deleted when
+    this context handler is finished and nothing happens. If the AZ Func server kills the function
+    during that time the queue message will become live at about the same time which triggers a
+    retry.
+
+    Usage:
+    async with QueueRetry(name_of_queue, message_to_queue, visibility_timeout=timeout):
+        # commands
+    """
+
+    def __init__(self, queue: str, message: str | dict, visibility_timeout: int):
+        self.queue = queue
+        self.message = message
+        self.visibility_timeout = visibility_timeout
+
+    async def __aenter__(self):
+        self.queue_message = asyncio.create_task(
+            send_message(
+                self.queue, self.message, visibility_timeout=self.visibility_timeout
+            )
+        )
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        queue_message = await self.queue_message
+        await delete_message(
+            self.queue, queue_message["id"], queue_message["pop_receipt"]
+        )
+
+
 class async_abfs:
     def __init__(self, connection_string=os.environ["Synblob"]):
         self.connection_string = connection_string
