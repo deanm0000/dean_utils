@@ -5,7 +5,15 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Literal, TypeAlias, cast, overload
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    TypeAlias,
+    cast,
+    overload,
+)
 from uuid import uuid4
 
 import azure.storage.blob as asb
@@ -18,9 +26,10 @@ from azure.storage.queue import TextBase64EncodePolicy
 from azure.storage.queue.aio import QueueServiceClient as QSC
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     import httpx
     from azure.storage.blob._models import BlobProperties
-    from azure.storage.blob.aio import StorageStreamDownloader
     from azure.storage.queue import QueueMessage
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
@@ -216,6 +225,30 @@ class QueueRetry:
         await delete_message(
             self.queue, queue_message["id"], queue_message["pop_receipt"]
         )
+
+
+class abfs_writer:
+    def __init__(self, connection_string, path: str):
+        self.connection_string = connection_string
+        self.path = path
+
+    async def __aenter__(self):
+        self.blob_client = BlobClient.from_connection_string(
+            self.connection_string, *(self.path.split("/", maxsplit=1))
+        )
+        self.block_list = []
+        return self
+
+    async def write(self, chunk: bytes | str):
+        block_id = uuid4().hex
+        if isinstance(chunk, str):
+            chunk = chunk.encode("utf8")
+        await self.blob_client.stage_block(block_id=block_id, data=chunk)
+        self.block_list.append(BlobBlock(block_id=block_id))
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.blob_client.commit_block_list(self.block_list)
+        await self.blob_client.close()
 
 
 class async_abfs:
@@ -851,12 +884,24 @@ class async_abfs:
         )
         return f"https://{account_dict['AccountName']}.blob.core.windows.net/{filepath}?{sas}"
 
-    async def stream(self, path: str) -> StorageStreamDownloader[bytes]:
-        blob = BlobClient.from_connection_string(
+    async def stream_read(self, path: str) -> AsyncGenerator[bytes]:
+        async with BlobClient.from_connection_string(
             self.connection_string, *(path.split("/", maxsplit=1))
-        )
-        stream = await blob.download_blob()
-        return stream
+        ) as blob:
+            stream = await blob.download_blob()
+
+            async for chunk in stream.chunks():
+                yield chunk
+
+    async def read(self, path: str) -> bytes:
+        async with BlobClient.from_connection_string(
+            self.connection_string, *(path.split("/", maxsplit=1))
+        ) as blob:
+            stream = await blob.download_blob()
+            return await stream.read()
+
+    def writer(self, path: str) -> abfs_writer:
+        return abfs_writer(self.connection_string, path)
 
 
 async def _stage_block(target: BlobClient, block_id: str, chunk: bytes):

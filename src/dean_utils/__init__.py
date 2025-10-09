@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, TypeAlias, cast
+from typing import Literal, cast
 
 __all__ = [
     "QueueRetry",
