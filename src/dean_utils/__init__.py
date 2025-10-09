@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal, TypeAlias, cast
 
 __all__ = [
+    "QueueRetry",
     "async_abfs",
     "az_send",
     "clear_messages",
@@ -32,6 +33,7 @@ with contextlib.suppress(ImportError):
 from pathlib import Path
 
 from dean_utils.utils.az_utils import (
+    QueueRetry,
     async_abfs,
     clear_messages,
     delete_message,
