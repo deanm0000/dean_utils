@@ -231,6 +231,7 @@ class abfs_writer:
     def __init__(self, connection_string, path: str):
         self.connection_string = connection_string
         self.path = path
+        self._write_json = False
 
     async def __aenter__(self):
         self.blob_client = BlobClient.from_connection_string(
@@ -240,11 +241,32 @@ class abfs_writer:
         return self
 
     async def write(self, chunk: bytes | str):
+        if self._write_json:
+            msg = "can't write on top of existing json"
+            raise ValueError(msg)
         block_id = uuid4().hex
         if isinstance(chunk, str):
             chunk = chunk.encode("utf8")
         await self.blob_client.stage_block(block_id=block_id, data=chunk)
         self.block_list.append(BlobBlock(block_id=block_id))
+
+    async def write_json(self, data: dict | list):
+        if len(self.block_list) > 0:
+            msg = "can't write json on top of other writes"
+            raise ValueError(msg)
+        try:
+            import orjson  # type: ignore
+
+            dumps = orjson.dumps
+        except ModuleNotFoundError:
+            import json
+
+            dumps = json.dumps
+
+        chunk = dumps(data)
+        await self.write(chunk)
+
+        self._write_json = True
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         await self.blob_client.commit_block_list(self.block_list)
@@ -902,6 +924,18 @@ class async_abfs:
 
     def writer(self, path: str) -> abfs_writer:
         return abfs_writer(self.connection_string, path)
+
+    async def read_json(self, path: str) -> dict | list:
+        try:
+            import orjson  # type: ignore
+
+            loads = orjson.loads
+        except ModuleNotFoundError:
+            import json
+
+            loads = json.loads
+        data = await self.read(path)
+        return loads(data)
 
 
 async def _stage_block(target: BlobClient, block_id: str, chunk: bytes):
