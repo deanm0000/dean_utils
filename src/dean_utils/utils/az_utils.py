@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -18,7 +19,6 @@ from uuid import uuid4
 
 import azure.storage.blob as asb
 import fsspec
-from aiopath import AsyncPath
 from azure.core.exceptions import HttpResponseError
 from azure.storage.blob import BlobBlock
 from azure.storage.blob.aio import BlobClient
@@ -597,7 +597,7 @@ class async_abfs:
 
     async def stream_up(
         self,
-        local_path: str | Path | AsyncPath,
+        local_path: str | Path,
         remote_path: str,
         size: int = 16384,
         /,
@@ -619,41 +619,39 @@ class async_abfs:
             recurs:
                 To try again recursively
         """
-        if isinstance(local_path, (str, Path)):
-            local_path = AsyncPath(local_path)
-        async with (
-            BlobClient.from_connection_string(
+        if isinstance(local_path, str):
+            local_path = Path(local_path)
+        with local_path.open("rb") as src:
+            async with BlobClient.from_connection_string(
                 self.connection_string, *(remote_path.split("/", maxsplit=1))
-            ) as target,
-            local_path.open("rb") as src,
-        ):
-            block_list = []
-            while True:
-                chunk = await src.read(size)
-                chunk = cast("IO", chunk)
-                if not chunk:
-                    break
-                block_id = uuid4().hex
-                try:
-                    await target.stage_block(block_id=block_id, data=chunk)
-                except HttpResponseError as err:
-                    if "The specified blob or block content is invalid." not in str(
-                        err
-                    ):
-                        raise
-                    await asyncio.sleep(1)
-                    await target.commit_block_list([])
-                    await target.delete_blob()
-                    if recurs is False:
-                        await self.stream_up(
-                            local_path,
-                            remote_path,
-                            recurs=True,
-                        )
-                    else:
-                        raise
-                block_list.append(BlobBlock(block_id=block_id))
-            await target.commit_block_list(block_list)
+            ) as target:
+                block_list = []
+                while True:
+                    chunk = src.read(size)
+                    chunk = cast("IO", chunk)
+                    if not chunk:
+                        break
+                    block_id = uuid4().hex
+                    try:
+                        await target.stage_block(block_id=block_id, data=chunk)
+                    except HttpResponseError as err:
+                        if "The specified blob or block content is invalid." not in str(
+                            err
+                        ):
+                            raise
+                        await asyncio.sleep(1)
+                        await target.commit_block_list([])
+                        await target.delete_blob()
+                        if recurs is False:
+                            await self.stream_up(
+                                local_path,
+                                remote_path,
+                                recurs=True,
+                            )
+                        else:
+                            raise
+                    block_list.append(BlobBlock(block_id=block_id))
+                await target.commit_block_list(block_list)
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
