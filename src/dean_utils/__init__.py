@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Literal, cast
+from math import copysign
+from typing import TYPE_CHECKING, Literal, cast
 
 __all__ = [
+    "Queue",
     "QueueRetry",
     "async_abfs",
     "az_send",
@@ -20,12 +22,14 @@ __all__ = [
 ]
 import contextlib
 import os
+from datetime import timedelta
 
 from dean_utils.polars_extras import (
     pl_scan_hive,
     pl_scan_pq,
     pl_write_pq,
 )
+from dean_utils.utils.az_storage_queues import Queue
 
 with contextlib.suppress(ImportError):
     from dean_utils.polars_extras import pl_write_delta_append
@@ -44,6 +48,30 @@ from dean_utils.utils.az_utils import (
 )
 from dean_utils.utils.email_utility import az_send
 from dean_utils.utils.httpx import global_async_client
+
+if TYPE_CHECKING:
+    from datetime import date
+
+
+def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False):
+    """
+    Creates a generator of dates from begin to end, not-inclusive by default.
+
+    Args:
+        begin (date): The first day of the range
+        end (date): The day after the last day of the range (by default)
+        step (int, optional): The number of days to step by
+        inclusive (boolean, optional): Whether or not to include end in the range.
+
+    Yields
+    ------
+        Generator[date]: A generator of dates
+    """
+    total_days_dif = (end - begin).days
+    if inclusive:
+        total_days_dif += int(copysign(1, total_days_dif))
+    for dif in range(0, total_days_dif, step):
+        yield begin + timedelta(days=dif)
 
 
 def error_email(func, attempts=1):

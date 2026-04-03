@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dean_utils"
-version="0.0.68"
+version="0.0.69"
 authors=[
     { name="Dean MacGregor", email="powertrading121@gmail.com"}
 ]
@@ -25,9 +25,6 @@ dependencies=[
 [tool.ruff]
 line-length = 88
 fix = true
-
-
-[tool.ruff.lint]
 select = [
   "E", # pycodestyle
   "W", # pycodestyle
@@ -39,7 +36,6 @@ select = [
   "D417", # Augment NumPy docstring convention: Missing argument descriptions
   "I", # isort
   "SIM", # flake8-simplify
-  "TCH", # flake8-type-checking
   "TID", # flake8-tidy-imports
   "UP", # pyupgrade
   "PT", # flake8-pytest-style
@@ -52,7 +48,6 @@ select = [
   "EM", # flake8-errmsg
   "FBT001", # flake8-boolean-trap
 ]
-
 
 ignore = [
   # Line length regulated by formatter

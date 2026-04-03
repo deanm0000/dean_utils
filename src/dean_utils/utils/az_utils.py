@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -51,6 +50,20 @@ elif (
         AIO_SERVE = None
 else:
     AIO_SERVE = None
+
+
+class Queues:
+    def __init__(self, conn_str: None | str = None):
+        if conn_str is None and AIO_SERVE is not None:
+            self.AIO = AIO_SERVE
+        elif conn_str is None and AIO_SERVE is None:
+            msg = "no conn str and no aio_serve"
+            raise ValueError(msg)
+        elif conn_str is not None:
+            self.AIO = QSC.from_connection_string(conn_str=conn_str)
+        else:
+            msg = f"{conn_str=} {AIO_SERVE=}"
+            raise ValueError(msg)
 
 
 async def peek_messages(queue: str, max_messages: int | None = None, **kwargs):
