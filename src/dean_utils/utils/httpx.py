@@ -7,7 +7,6 @@ from httpx import AsyncClient, Limits, Timeout
 if typing.TYPE_CHECKING:
     import ssl
 
-    from httpx import AsyncBaseTransport
     from httpx._types import (
         AuthTypes,
         CookieTypes,
