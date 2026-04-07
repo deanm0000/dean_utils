@@ -23,6 +23,7 @@ from azure.storage.blob import BlobBlock
 from azure.storage.blob.aio import BlobClient
 from azure.storage.queue import TextBase64EncodePolicy
 from azure.storage.queue.aio import QueueServiceClient as QSC
+from pyarrow import parquet as pq
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -240,6 +241,14 @@ class QueueRetry:
         )
 
 
+class MinMaxNotEqualError(Exception):
+    pass
+
+
+class ColumnNotExistError(Exception):
+    pass
+
+
 class abfs_writer:
     def __init__(self, connection_string, path: str):
         self.connection_string = connection_string
@@ -368,6 +377,101 @@ class async_abfs:
             ) as target,
         ):
             return await target.get_blob_properties(**kwargs)
+
+    def pq_unique_values(self, path: str | list[str], column: str) -> list[str]:
+        """
+        Return unique values from a parquet column.
+
+        The function inspects parquet row-group statistics and expects each row
+        group to contain a single value for the requested column (that is,
+        statistics min and max are equal). If any row groups don't have min=max
+        then this will raise a MinMaxNotEqualError.
+
+        Parameters
+        ----------
+        path : str
+            Local/remote parquet path understood by the configured filesystem.
+        column : str
+            Column name to inspect.
+
+        Returns
+        -------
+        list[str]
+            Unique values found across row groups, preserving first-seen order.
+
+        Raises
+        ------
+        ColumnNotExistError
+            If ``column`` is not present in the parquet schema.
+        MinMaxNotEqualError
+            If any row group has non-constant values for ``column``
+            (``min != max``).
+        """
+        return list(self.pq_unique_items(path, column).keys())
+
+    def pq_unique_items(
+        self, path: str | list[str], column: str
+    ) -> dict[str, list[int]]:
+        """
+        Map each unique parquet column value to row-group indices.
+
+        The function inspects parquet row-group statistics and expects each row
+        group to contain a single value for the requested column (that is,
+        statistics min and max are equal). If any row groups don't have min=max
+        then this will raise a MinMaxNotEqualError.
+
+        Parameters
+        ----------
+        path : str
+            Local/remote parquet path understood by the configured filesystem.
+        column : str
+            Column name to inspect.
+
+        Returns
+        -------
+        dict[str, list[int]]
+            Keys are unique column values and values are row-group indices where
+            each value appears.
+
+        Raises
+        ------
+        ColumnNotExistError
+            If ``column`` is not present in the parquet schema.
+        MinMaxNotEqualError
+            If any row group has non-constant values for ``column``
+            (``min != max``).
+        """
+        if isinstance(path, str):
+            path = [path]
+        unique_items = {}
+        for p in path:
+            if len(splt := p.split(":")) > 1:
+                p = splt[1]
+            pq_file = pq.ParquetFile(p, filesystem=self.sync)
+            n_groups = pq_file.num_row_groups
+            try:
+                col_indx = next(
+                    i for i, name in enumerate(pq_file.schema.names) if name == column
+                )
+            except StopIteration:
+                msg = f"Column '{column}' does not exist in parquet file"
+                raise ColumnNotExistError(msg) from None
+
+            for i in range(n_groups):
+                stats = pq_file.metadata.row_group(i).column(col_indx).statistics
+                if stats.min != stats.max:
+                    msg = (
+                        f"Row group {i} column '{column}' has min {stats.min} != max {stats.max}"
+                        if len(path) == 1
+                        else f"Parquet file '{p}' row group {i} column '{column}' has min {stats.min} != max {stats.max}"
+                    )
+                    raise MinMaxNotEqualError(msg)
+                if stats.min not in unique_items:
+                    unique_items[stats.min] = [i]
+                else:
+                    unique_items[stats.min].append(i)
+
+        return unique_items
 
     async def from_url(
         self,

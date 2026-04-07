@@ -55,17 +55,23 @@ if TYPE_CHECKING:
 
 def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False):
     """
-    Creates a generator of dates from begin to end, not-inclusive by default.
+    Yield dates from begin to end using a fixed day step.
 
-    Args:
-        begin (date): The first day of the range
-        end (date): The day after the last day of the range (by default)
-        step (int, optional): The number of days to step by
-        inclusive (boolean, optional): Whether or not to include end in the range.
+    Parameters
+    ----------
+    begin : date
+        First date in the sequence.
+    end : date
+        End boundary. Excluded by default.
+    step : int, default=1
+        Step size in days.
+    inclusive : bool, default=False
+        When True, include ``end`` if it lies on the step boundary.
 
     Yields
     ------
-        Generator[date]: A generator of dates
+    date
+        Dates between ``begin`` and ``end`` at ``step`` day intervals.
     """
     total_days_dif = (end - begin).days
     if inclusive:
