@@ -8,31 +8,45 @@ from typing import (
     overload,
 )
 
-from azure.storage.queue import TextBase64EncodePolicy
-from azure.storage.queue.aio import QueueServiceClient as QSC
-
+# from azure.core.exceptions import (
+#     HttpResponseError,
+#     ResourceExistsError,
+#     ResourceNotFoundError,
+# )
 if TYPE_CHECKING:
     from azure.storage.queue import QueueMessage
 
 
 class Queue:
     def __init__(self, conn_str: None | str = None):
+        try:
+            from azure.storage.queue.aio import QueueServiceClient as QSC
+
+        except ImportError as e:
+            msg = "azure-storage-queue is not installed, run `pip install azure-storage-queue` to use this functionality"
+            raise ImportError(msg) from e
+
         if conn_str is None:
-            conn_str = os.environ.get("AzureWebJobsStorage")
-        if conn_str is None:
+            self.conn_str = conn_str or os.environ.get("AzureWebJobsStorage", None)
+        if self.conn_str is None:
             msg = "no conn_str"
             raise KeyError(msg)
-        self.AIO_SERVE = QSC.from_connection_string(conn_str=conn_str)
+
+        self.AIO_SERVE = QSC.from_connection_string(conn_str=self.conn_str)
 
     async def peek_messages(
         self, queue: str, max_messages: int | None = None, **kwargs
     ):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
             return await aio_client.peek_messages(max_messages=max_messages, **kwargs)
 
     async def get_queue_properties(self, queue: str, **kwargs):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
@@ -70,6 +84,8 @@ class Queue:
         timeout: int | None = None,
         **kwargs,
     ):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
@@ -111,6 +127,8 @@ class Queue:
         timeout: int | None = None,
         **kwargs,
     ):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
@@ -131,6 +149,8 @@ class Queue:
         pop_receipt,
         **kwargs,
     ):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
@@ -146,6 +166,8 @@ class Queue:
         queue,
         **kwargs,
     ):
+        from azure.storage.queue import TextBase64EncodePolicy
+
         async with self.AIO_SERVE.get_queue_client(
             queue, message_encode_policy=TextBase64EncodePolicy()
         ) as aio_client:
@@ -178,7 +200,7 @@ class QueueRetry:
         self,
         queue: Queue,
         queue_name: str,
-        message: list[str] | str | dict,
+        message: str | dict,
         visibility_timeout: int,
     ):
         self.queue = queue
@@ -189,12 +211,16 @@ class QueueRetry:
     async def __aenter__(self):
         self.queue_message = asyncio.create_task(
             self.queue.send_message(
-                self.message, visibility_timeout=self.visibility_timeout
-            )  # type: ignore
+                self.queue_name,
+                self.message,
+                visibility_timeout=self.visibility_timeout,
+            )
         )
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         queue_message = await self.queue_message
         await self.queue.delete_message(
-            self.message, queue_message["id"], queue_message["pop_receipt"]
+            self.queue_name,
+            queue_message["id"],
+            queue_message["pop_receipt"],
         )

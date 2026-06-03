@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import copysign
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 __all__ = [
@@ -13,41 +14,32 @@ __all__ = [
     "get_queue_properties",
     "global_async_client",
     "peek_messages",
-    "pl_scan_hive",
-    "pl_scan_pq",
-    "pl_write_delta_append",
-    "pl_write_pq",
     "send_message",
+    "to_db",
     "update_queue",
 ]
 import contextlib
 import os
 from datetime import timedelta
 
-from dean_utils.polars_extras import (
-    pl_scan_hive,
-    pl_scan_pq,
-    pl_write_pq,
-)
 from dean_utils.utils.az_storage_queues import Queue
+from dean_utils.utils.pl_to_db import to_db
 
 with contextlib.suppress(ImportError):
-    from dean_utils.polars_extras import pl_write_delta_append
+    from pathlib import Path
 
-from pathlib import Path
-
-from dean_utils.utils.az_utils import (
-    QueueRetry,
-    async_abfs,
-    clear_messages,
-    delete_message,
-    get_queue_properties,
-    peek_messages,
-    send_message,
-    update_queue,
-)
-from dean_utils.utils.email_utility import az_send
-from dean_utils.utils.httpx import global_async_client
+    from dean_utils.utils.async_abfs import async_abfs
+    from dean_utils.utils.az_storage_queues import Queue, QueueRetry
+    from dean_utils.utils.az_utils import (
+        clear_messages,
+        delete_message,
+        get_queue_properties,
+        peek_messages,
+        send_message,
+        update_queue,
+    )
+    from dean_utils.utils.email_utility import az_send
+    from dean_utils.utils.httpx import global_async_client
 
 if TYPE_CHECKING:
     from datetime import date
@@ -81,6 +73,8 @@ def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False
 
 
 def error_email(func, attempts=1):
+    from dean_utils.utils.email_utility import az_send
+
     def wrapper(*args, **kwargs):
         subject = Path.cwd()
         errors = []
