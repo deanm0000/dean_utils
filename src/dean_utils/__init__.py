@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import copysign
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 __all__ = [
     "Queue",
@@ -43,6 +43,8 @@ with contextlib.suppress(ImportError):
 
 if TYPE_CHECKING:
     from datetime import date
+
+    from polars.type_aliases import StorageOptionsDict
 
 
 def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False):
@@ -102,22 +104,13 @@ def error_email(func, attempts=1):
     return wrapper
 
 
-ACCOUNT_NAME = Literal["account_name"]
-ACCOUNT_KEY = Literal["account_key"]
-
-
-class STORAGE_OPTIONS(TypedDict):
-    account_name: str
-    account_key: str
-
-
 class STORAGE_OPTIONS_DICT(TypedDict):
-    storage_options: STORAGE_OPTIONS
+    storage_options: StorageOptionsDict
 
 
 def stor_opts(
     os_env: str = "Synblob",
-) -> STORAGE_OPTIONS:
+) -> StorageOptionsDict:
     conn_str = os.environ.get(os_env)
     assert conn_str is not None
     account_name = account_key = None
@@ -133,16 +126,7 @@ def stor_opts(
     assert account_key is not None, (
         "Connection string must contain AccountName and AccountKey"
     )
-    return STORAGE_OPTIONS(account_name=account_name, account_key=account_key)
-
-
-def _name_key(x: str) -> Literal["account_name", "account_key"] | None:
-    if x == "AccountName":
-        return "account_name"
-    elif x == "AccountKey":
-        return "account_key"
-    else:
-        return None
+    return {"account_name": account_name, "account_key": account_key}
 
 
 def stor_opts_dict(
