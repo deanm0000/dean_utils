@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import copysign
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 __all__ = [
     "Queue",
@@ -43,8 +43,6 @@ with contextlib.suppress(ImportError):
 
 if TYPE_CHECKING:
     from datetime import date
-
-    from polars.type_aliases import StorageOptionsDict
 
 
 def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False):
@@ -102,6 +100,9 @@ def error_email(func, attempts=1):
         )
 
     return wrapper
+
+
+StorageOptionsDict: TypeAlias = dict[str, Any]
 
 
 class STORAGE_OPTIONS_DICT(TypedDict):
