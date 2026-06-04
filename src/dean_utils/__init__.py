@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import copysign
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 __all__ = [
     "Queue",
@@ -104,7 +104,15 @@ def error_email(func, attempts=1):
 
 ACCOUNT_NAME = Literal["account_name"]
 ACCOUNT_KEY = Literal["account_key"]
-STORAGE_OPTIONS = dict[str, str]
+
+
+class STORAGE_OPTIONS(TypedDict):
+    account_name: str
+    account_key: str
+
+
+class STORAGE_OPTIONS_DICT(TypedDict):
+    storage_options: STORAGE_OPTIONS
 
 
 def stor_opts(
@@ -112,15 +120,23 @@ def stor_opts(
 ) -> STORAGE_OPTIONS:
     conn_str = os.environ.get(os_env)
     assert conn_str is not None
-    res = {
-        k: y[1]
-        for x in conn_str.split(";")
-        if (k := _name_key((y := x.split("=", maxsplit=1))[0])) is not None
-    }
-    return cast("STORAGE_OPTIONS", res)
+    account_name = account_key = None
+    for x in conn_str.split(";"):
+        k, v = x.split("=", maxsplit=1)
+        if k == "AccountName":
+            account_name = v
+        elif k == "AccountKey":
+            account_key = v
+    assert account_name is not None, (
+        "Connection string must contain AccountName and AccountKey"
+    )
+    assert account_key is not None, (
+        "Connection string must contain AccountName and AccountKey"
+    )
+    return STORAGE_OPTIONS(account_name=account_name, account_key=account_key)
 
 
-def _name_key(x: str) -> str | None:
+def _name_key(x: str) -> Literal["account_name", "account_key"] | None:
     if x == "AccountName":
         return "account_name"
     elif x == "AccountKey":
@@ -131,8 +147,5 @@ def _name_key(x: str) -> str | None:
 
 def stor_opts_dict(
     os_env: str = "Synblob",
-) -> dict[
-    Literal["storage_options"],
-    STORAGE_OPTIONS,
-]:
+) -> STORAGE_OPTIONS_DICT:
     return {"storage_options": stor_opts(os_env)}
