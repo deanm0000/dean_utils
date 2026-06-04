@@ -27,10 +27,15 @@ class Queue:
             msg = "azure-storage-queue is not installed, run `pip install azure-storage-queue` to use this functionality"
             raise ImportError(msg) from e
         self.queue = queue
-        if conn_str is None:
-            self.conn_str = conn_str or os.environ.get("AzureWebJobsStorage", None)
+
+        if conn_str is not None:
+            self.conn_str = conn_str
+        elif os.environ.get("AzureWebJobsStorage") is not None:
+            self.conn_str = os.environ.get("AzureWebJobsStorage")
+        else:
+            self.conn_str = None
         if self.conn_str is None:
-            msg = "no conn_str"
+            msg = "No connection string provided for Azure Storage Queues. Please provide a connection string or set the AzureWebJobsStorage environment variable."
             raise KeyError(msg)
 
         self.AIO_SERVE = QSC.from_connection_string(conn_str=self.conn_str)
