@@ -32,6 +32,8 @@ class abfs_writer:
         self._write_json = False
 
     async def __aenter__(self):
+        from azure.storage.blob.aio import BlobClient
+
         self.blob_client = BlobClient.from_connection_string(
             self.connection_string, *(self.path.split("/", maxsplit=1))
         )
@@ -39,6 +41,8 @@ class abfs_writer:
         return self
 
     async def write(self, chunk: bytes | str):
+        from azure.storage.blob import BlobBlock
+
         if self._write_json:
             msg = "can't write on top of existing json"
             raise ValueError(msg)
@@ -46,6 +50,7 @@ class abfs_writer:
         if isinstance(chunk, str):
             chunk = chunk.encode("utf8")
         await self.blob_client.stage_block(block_id=block_id, data=chunk)
+
         self.block_list.append(BlobBlock(block_id=block_id))
 
     async def write_json(self, data: dict | list):
