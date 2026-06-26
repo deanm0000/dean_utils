@@ -18,23 +18,18 @@ __all__ = [
     "to_db",
     "update_queue",
 ]
+import contextlib
 import os
 from datetime import timedelta
 
 from dean_utils.utils.az_storage_queues import Queue
 from dean_utils.utils.pl_to_db import to_db
 
-try:
+with contextlib.suppress(ImportError):
     from dean_utils.utils.async_abfs import async_abfs
-except ImportError as e:
-    msg = "need to install `azure.storage`, `azure.storage.blob`, `adlfs`, and `fsspec`"
-    raise ImportError(msg) from e
-try:
+with contextlib.suppress(ImportError):
     from dean_utils.utils.az_storage_queues import Queue, QueueRetry
-except ImportError as e:
-    msg = "need to install `azure-storage-queue`"
-    raise ImportError(msg) from e
-try:
+with contextlib.suppress(ImportError):
     from dean_utils.utils.az_utils import (
         clear_messages,
         delete_message,
@@ -43,19 +38,10 @@ try:
         send_message,
         update_queue,
     )
-except ImportError as e:
-    msg = "need to install `azure-storage-queue`"
-    raise ImportError(msg) from e
-try:
+with contextlib.suppress(ImportError):
     from dean_utils.utils.email_utility import az_send
-except ImportError as e:
-    msg = "need to install `azure.communication.email`, and `python-multipart`"
-    raise ImportError(msg) from e
-try:
+with contextlib.suppress(ImportError):
     from dean_utils.utils.httpx import global_async_client
-except ImportError as e:
-    msg = "need to install `httpx`"
-    raise ImportError(msg) from e
 
 if TYPE_CHECKING:
     from datetime import date
