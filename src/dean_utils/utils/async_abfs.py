@@ -236,7 +236,11 @@ class async_abfs:
             If any row group has non-constant values for ``column``
             (``min != max``).
         """
-        from pyarrow import parquet as pq
+        try:
+            from pyarrow import parquet as pq
+        except ImportError as e:
+            msg = "pyarrow is not installed, run `pip install pyarrow` to use this functionality"
+            raise ImportError(msg) from e
 
         if isinstance(path, str):
             path = [path]
