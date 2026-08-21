@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import (
@@ -11,6 +12,7 @@ from typing import (
     Literal,
     TypeAlias,
     cast,
+    overload,
 )
 from uuid import uuid4
 
@@ -25,9 +27,42 @@ if TYPE_CHECKING:
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
 
 
+@overload
+def _clean_path(path: str) -> str: ...
+@overload
+def _clean_path(path: Sequence[str]) -> Sequence[str]: ...
+def _clean_path(path: str | Sequence[str]) -> str | Sequence[str]:
+    """
+    Clean a path by removing abfs:// and @ account name.
+
+    Parameters
+    ----------
+    path: str | Sequence[str]
+        The path to clean.
+
+    Returns
+    -------
+    str | Sequence[str]
+        The cleaned path.
+    """
+    if isinstance(path, str):
+        path = path.split("://", maxsplit=1)[-1]
+        at_loc = path.find("@")
+
+        if at_loc == -1:
+            return path
+        slash_loc = path.find("/", at_loc)
+        if slash_loc == -1:
+            return path[:at_loc]
+        return path[:at_loc] + path[slash_loc:]
+    elif isinstance(path, Sequence):
+        return [_clean_path(p) for p in path]
+
+
 class abfs_writer:
     def __init__(self, connection_string: str, path: str):
         self.connection_string = connection_string
+        path = _clean_path(path)
         self.path = path
         self._write_json = False
 
@@ -41,6 +76,7 @@ class abfs_writer:
         return self
 
     async def write(self, chunk: bytes | str):
+        """Stage a bytes or text chunk for upload to the blob."""
         from azure.storage.blob import BlobBlock
 
         if self._write_json:
@@ -54,6 +90,14 @@ class abfs_writer:
         self.block_list.append(BlobBlock(block_id=block_id))
 
     async def write_json(self, data: dict | list):
+        """
+        Serialize JSON data and stage it as the blob contents.
+
+        Parameters
+        ----------
+        data: dict | list
+            JSON-serializable data to upload.
+        """
         if len(self.block_list) > 0:
             msg = "can't write json on top of other writes"
             raise ValueError(msg)
@@ -100,72 +144,26 @@ class async_abfs:
         stor = {key_conv[key]: val for key, val in stor.items() if key in key_conv}
         self.stor = stor
 
-    async def get_blob_properties(self, path, **kwargs: Any) -> BlobProperties:
-        r"""
-            Returns all metadata for the blob.
+    async def get_blob_properties(self, path: str, **kwargs: Any) -> BlobProperties:
+        """
+        Return all metadata for a blob.
 
-        :keyword lease:
-            Required if the blob has an active lease. Value can be a BlobLeaseClient object
-            or the lease ID as a string.
-        :paramtype lease: ~azure.storage.blob.aio.BlobLeaseClient or str
-        :keyword str version_id:
-            The version id parameter is an opaque DateTime
-            value that, when present, specifies the version of the blob to get properties.
+        Parameters
+        ----------
+        path: str
+            The blob path.
+        **kwargs: Any
+            Keyword arguments forwarded to
+            :meth:`azure.storage.blob.aio.BlobClient.get_blob_properties`.
 
-            .. versionadded:: 12.4.0
-
-            This keyword argument was introduced in API version '2019-12-12'.
-
-        :keyword ~datetime.datetime if_modified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this header to perform the operation only
-            if the resource has been modified since the specified time.
-        :keyword ~datetime.datetime if_unmodified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this header to perform the operation only if
-            the resource has not been modified since the specified date/time.
-        :keyword str etag:
-            An ETag value, or the wildcard character (*). Used to check if the resource has changed,
-            and act according to the condition specified by the `match_condition` parameter.
-        :keyword ~azure.core.MatchConditions match_condition:
-            The match condition to use upon the etag.
-        :keyword str if_tags_match_condition:
-            Specify a SQL where clause on blob tags to operate only on blob with a matching value.
-            eg. ``"\"tagname\"='my tag'"``
-
-            .. versionadded:: 12.4.0
-
-        :keyword ~azure.storage.blob.CustomerProvidedEncryptionKey cpk:
-            Encrypts the data on the service-side with the given key.
-            Use of customer-provided keys must be done over HTTPS.
-            As the encryption key itself is provided in the request,
-            a secure connection must be established to transfer the key.
-        :keyword int timeout:
-            Sets the server-side timeout for the operation in seconds. For more details see
-            https://learn.microsoft.com/rest/api/storageservices/setting-timeouts-for-blob-service-operations.
-            This value is not tracked or validated on the client. To configure client-side network
-            timesouts see `here <https://github.com/Azure/azure-sdk-for-python/tree/main/sdk/storage/azure-storage-blob
-            #other-client--per-operation-configuration>`__.
-        :returns: BlobProperties
-        :rtype: ~azure.storage.blob.BlobProperties
-
-        .. admonition:: Example:
-
-            .. literalinclude:: ../samples/blob_samples_common_async.py
-                :start-after: [START get_blob_properties]
-                :end-before: [END get_blob_properties]
-                :language: python
-                :dedent: 12
-                :caption: Getting the properties for a blob.
-
-            md5 is at .content_settings.content_md5.hex()
+        Returns
+        -------
+        BlobProperties
+            The blob metadata and properties.
         """
         from azure.storage.blob.aio import BlobClient
 
+        path = _clean_path(path)
         async with (
             BlobClient.from_connection_string(
                 self.connection_string, *(path.split("/", maxsplit=1))
@@ -173,7 +171,7 @@ class async_abfs:
         ):
             return await target.get_blob_properties(**kwargs)
 
-    def pq_unique_values(self, path: str | list[str], column: str) -> list[str]:
+    def pq_unique_values(self, path: str | Sequence[str], column: str) -> list[str]:
         """
         Return unique values from a parquet column.
 
@@ -184,9 +182,9 @@ class async_abfs:
 
         Parameters
         ----------
-        path : str
+        path: str | Sequence[str]
             Local/remote parquet path understood by the configured filesystem.
-        column : str
+        column: str
             Column name to inspect.
 
         Returns
@@ -202,10 +200,12 @@ class async_abfs:
             If any row group has non-constant values for ``column``
             (``min != max``).
         """
+        path = _clean_path(path)
+
         return list(self.pq_unique_items(path, column).keys())
 
     def pq_unique_items(
-        self, path: str | list[str], column: str
+        self, path: str | Sequence[str], column: str
     ) -> dict[str, list[int]]:
         """
         Map each unique parquet column value to row-group indices.
@@ -217,9 +217,9 @@ class async_abfs:
 
         Parameters
         ----------
-        path : str
+        path: str
             Local/remote parquet path understood by the configured filesystem.
-        column : str
+        column: str
             Column name to inspect.
 
         Returns
@@ -236,6 +236,7 @@ class async_abfs:
             If any row group has non-constant values for ``column``
             (``min != max``).
         """
+        path = _clean_path(path)
         try:
             from pyarrow import parquet as pq
         except ImportError as e:
@@ -283,179 +284,34 @@ class async_abfs:
         incremental_copy: bool = False,
         **kwargs,
     ) -> dict[str, str | datetime]:
-        r"""
-            Copies a blob from the given URL.
+        """
+        Copy a blob from a URL to a destination path.
 
-            Args:
-        :param str source_url:
-            A URL of up to 2 KB in length that specifies a file or blob.
-            The value should be URL-encoded as it would appear in a request URI.
-            If the source is in another account, the source must either be public
-            or must be authenticated via a shared access signature. If the source
-            is public, no authentication is required.
-
-        Examples
-        --------
-            https://myaccount.blob.core.windows.net/mycontainer/myblob
-
-            https://myaccount.blob.core.windows.net/mycontainer/myblob?snapshot=<DateTime>
-
-            https://otheraccount.blob.core.windows.net/mycontainer/myblob?sastoken
-        :param path:
-            The destination path to which the source_url will be copied
-        :param metadata:
-            Name-value pairs associated with the blob as metadata. If no name-value
-            pairs are specified, the operation will copy the metadata from the
-            source blob or file to the destination blob. If one or more name-value
-            pairs are specified, the destination blob is created with the specified
-            metadata, and metadata is not copied from the source blob or file.
-        :type metadata: dict(str, str)
-        :param bool incremental_copy:
-            Copies the snapshot of the source page blob to a destination page blob.
-            The snapshot is copied such that only the differential changes between
-            the previously copied snapshot are transferred to the destination.
-            The copied snapshots are complete copies of the original snapshot and
-            can be read or copied from as usual. Defaults to False.
-        :keyword tags:
-            Name-value pairs associated with the blob as tag. Tags are case-sensitive.
-            The tag set may contain at most 10 tags.  Tag keys must be between 1 and 128 characters,
-            and tag values must be between 0 and 256 characters.
-            Valid tag key and value characters include: lowercase and uppercase letters,
-            digits (0-9), space (' '), plus (+), minus (-), period (.), solidus (/), colon (:),
-            equals (=), underscore (_).
-
-            The (case-sensitive) literal "COPY" can instead be passed to copy tags from the source
-            blob.
-            This option is only available when `incremental_copy=False` and `requires_sync=True`.
-
-            .. versionadded:: 12.4.0
-
-        :paramtype tags: dict(str, str) or Literal["COPY"]
-        :keyword ~azure.storage.blob.ImmutabilityPolicy immutability_policy:
-            Specifies the immutability policy of a blob, blob snapshot or blob version.
-
-            .. versionadded:: 12.10.0
-                This was introduced in API version '2020-10-02'.
-
-        :keyword bool legal_hold:
-            Specified if a legal hold should be set on the blob.
-
-            .. versionadded:: 12.10.0
-                This was introduced in API version '2020-10-02'.
-
-        :keyword ~datetime.datetime source_if_modified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this conditional header to copy the blob only if the source
-            blob has been modified since the specified date/time.
-        :keyword ~datetime.datetime source_if_unmodified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this conditional header to copy the blob only if the source blob
-            has not been modified since the specified date/time.
-        :keyword str source_etag:
-            The source ETag value, or the wildcard character (*). Used to check if the resource has
-            changed, and act according to the condition specified by the `match_condition`
-            parameter.
-        :keyword ~azure.core.MatchConditions source_match_condition:
-            The source match condition to use upon the etag.
-        :keyword ~datetime.datetime if_modified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this conditional header to copy the blob only
-            if the destination blob has been modified since the specified date/time.
-            If the destination blob has not been modified, the Blob service returns
-            status code 412 (Precondition Failed).
-        :keyword ~datetime.datetime if_unmodified_since:
-            A DateTime value. Azure expects the date value passed in to be UTC.
-            If timezone is included, any non-UTC datetimes will be converted to UTC.
-            If a date is passed in without timezone info, it is assumed to be UTC.
-            Specify this conditional header to copy the blob only
-            if the destination blob has not been modified since the specified
-            date/time. If the destination blob has been modified, the Blob service
-            returns status code 412 (Precondition Failed).
-        :keyword str etag:
-            The destination ETag value, or the wildcard character (*). Used to check if the resource
-            has changed, and act according to the condition specified by the `match_condition`
-            parameter.
-        :keyword ~azure.core.MatchConditions match_condition:
-            The destination match condition to use upon the etag.
-        :keyword str if_tags_match_condition:
-            Specify a SQL where clause on blob tags to operate only on blob with a matching value.
-            eg. ``"\"tagname\"='my tag'"``
-
-            .. versionadded:: 12.4.0
-
-        :keyword destination_lease:
-            The lease ID specified for this header must match the lease ID of the
-            destination blob. If the request does not include the lease ID or it is not
-            valid, the operation fails with status code 412 (Precondition Failed).
-        :paramtype destination_lease: ~azure.storage.blob.aio.BlobLeaseClient or str
-        :keyword source_lease:
-            Specify this to perform the Copy Blob operation only if
-            the lease ID given matches the active lease ID of the source blob.
-        :paramtype source_lease: ~azure.storage.blob.aio.BlobLeaseClient or str
-        :keyword int timeout:
-            Sets the server-side timeout for the operation in seconds. For more details see
-            https://learn.microsoft.com/rest/api/storageservices/setting-timeouts-for-blob-service-operations.
-            This value is not tracked or validated on the client. To configure client-side network
-            timesouts see `here <https://github.com/Azure/azure-sdk-for-python/tree/main/sdk/storage/azure-storage-blob
-            #other-client--per-operation-configuration>`__.
-        :keyword ~azure.storage.blob.PremiumPageBlobTier premium_page_blob_tier:
-            A page blob tier value to set the blob to. The tier correlates to the size of the
-            blob and number of allowed IOPS. This is only applicable to page blobs on
-            premium storage accounts.
-        :keyword ~azure.storage.blob.StandardBlobTier standard_blob_tier:
-            A standard blob tier value to set the blob to. For this version of the library,
-            this is only applicable to block blobs on standard storage accounts.
-        :keyword ~azure.storage.blob.RehydratePriority rehydrate_priority:
-            Indicates the priority with which to rehydrate an archived blob
-        :keyword bool seal_destination_blob:
-            Seal the destination append blob. This operation is only for append blob.
-
-            .. versionadded:: 12.4.0
-
-        :keyword bool requires_sync:
-            Enforces that the service will not return a response until the copy is complete.
-        :keyword str source_authorization:
-            Authenticate as a service principal using a client secret to access a source blob.
-            Ensure "bearer " is the prefix of the source_authorization string. This option is only
-            available when `incremental_copy` is set to False and `requires_sync` is set to True.
-
-            .. versionadded:: 12.9.0
-
-        :keyword str encryption_scope:
-            A predefined encryption scope used to encrypt the data on the sync copied blob. An
-            encryption scope can be created using the Management API and referenced here by name. If
-            a default encryption scope has been defined at the container, this value will override
-            it if the container-level scope is configured to allow overrides. Otherwise an error
-            will be raised.
-
-            .. versionadded:: 12.10.0
-
-        :returns: A dictionary of copy properties (etag, last_modified, copy_id, copy_status).
-        :rtype: dict[str, Union[str, ~datetime.datetime]]
-
-        .. admonition:: Example:
-
-            .. literalinclude:: ../samples/blob_samples_common_async.py
-                :start-after: [START copy_blob_from_url]
-                :end-before: [END copy_blob_from_url]
-                :language: python
-                :dedent: 16
-                :caption: Copy a blob from a URL.
-
-
+        Parameters
+        ----------
+        source_url: str
+            URL of the source blob or file. It must be URL-encoded as it would
+            appear in a request URI.
+        path: str
+            Destination blob path.
+        metadata: dict[str, str] | None, default=None
+            Metadata for the destination blob. When omitted, metadata is copied
+            from the source.
+        incremental_copy: bool, default=False
+            Whether to copy only changes from a source page-blob snapshot.
+        **kwargs: Any
+            Keyword arguments forwarded to
+            :meth:`azure.storage.blob.aio.BlobClient.start_copy_from_url`.
 
         Returns
         -------
-                dict[str, str | datetime]: _description_
+        dict[str, str | datetime]
+            Copy properties, including the ETag, last-modified time, copy ID,
+            and copy status.
         """
         from azure.storage.blob.aio import BlobClient
 
+        path = _clean_path(path)
         async with (
             BlobClient.from_connection_string(
                 self.connection_string, *(path.split("/", maxsplit=1))
@@ -476,27 +332,26 @@ class async_abfs:
         **httpx_extras,
     ) -> None:
         """
-        stream_dl will stream the contents of a url to a path in the cloud given an httpx Client.
+        Stream an HTTP response to a remote blob.
 
-        async stream_dl(client, method, url, path, recurs, **httpx_extras)
-            Download file streaming in chunks in async as downloader and to a Blob
-
-        Args:
-            client: httpx.AsyncClient
-                The httpx Async Client object to use
-            method:
-                The HTTP method whether GET or POST
-            url:
-                The URL to download
-            path:
-                The full path to Azure file being saved
-            recurs:
-                To try again recursively
-            httpx_extras
-                Any extra arguments to be sent to client.stream
+        Parameters
+        ----------
+        client: httpx.AsyncClient
+            HTTP client used to stream the response.
+        method: HTTPX_METHODS
+            HTTP method to use.
+        url: str
+            URL to download.
+        path: str
+            Destination blob path.
+        recurs: bool, default=False
+            Reserved for recursive retry compatibility.
+        **httpx_extras: Any
+            Additional keyword arguments passed to ``client.stream``.
         """
         from azure.storage.blob.aio import BlobClient
 
+        path = _clean_path(path)
         async with (
             BlobClient.from_connection_string(
                 self.connection_string, *(path.split("/", maxsplit=1))
@@ -526,23 +381,22 @@ class async_abfs:
         recurs=False,
     ) -> None:
         """
-        Help on method stream_up.
+        Stream a local file to a remote blob.
 
-        async stream_up(local_path, remote_path, size, recurs)
-            Download file streaming in chunks in async as downloader and to a Blob
-
-        Args:
-            local_path:
-                The full path to local path as str or Path
-            remote_path:
-                The full path to remote path as str
-            size:
-                The number of bytes read per iteration in read
-            recurs:
-                To try again recursively
+        Parameters
+        ----------
+        local_path: str | Path
+            Local file path.
+        remote_path: str
+            Destination blob path.
+        size: int, default=16384
+            Number of bytes read per upload block.
+        recurs: bool, default=False
+            Whether this call is a retry after an invalid block error.
         """
         if isinstance(local_path, str):
             local_path = Path(local_path)
+        remote_path = _clean_path(remote_path)
         from azure.core.exceptions import HttpResponseError
         from azure.storage.blob import BlobBlock
         from azure.storage.blob.aio import BlobClient
@@ -581,30 +435,20 @@ class async_abfs:
 
     async def walk(self, path: str, maxdepth=None, **kwargs):
         """
-        Help on method _async_walk in module adlfs.spec.
+        Recursively list files and directories below a path.
 
-        async _async_walk(path: str, maxdepth=None, **kwargs) method of AzureBlobFileSystem instance
-            Return all files belows path
-
-            list all files, recursing into subdirectories; output is iterator-style,
-            like ``os.walk()``. For a simple list of files, ``find()`` is available.
-
-            Note that the "files" outputted will include anything that is not
-            a directory, such as links.
-
-        Args:
-            path: str
-                Root to recurse into
-
-            maxdepth: int
-                Maximum recursion depth. None means limitless, but not recommended
-                on link-based file-systems.
-
-            kwargs:
-                dict of args passed to ``ls``
+        Parameters
+        ----------
+        path: str
+            Root path to recurse into.
+        maxdepth: int | None, default=None
+            Maximum recursion depth. ``None`` has no limit.
+        **kwargs: Any
+            Additional arguments passed to the underlying filesystem walk.
         """
         import fsspec
 
+        path = _clean_path(path)
         this_fs = fsspec.filesystem(
             self.fsspec_protocol,
             connection_string=self.connection_string,
@@ -614,13 +458,21 @@ class async_abfs:
 
     async def exists(self, path: str):
         """
-        Help on method _exists in module adlfs.spec.
+        Check whether a remote blob exists.
 
-        async _exists(path) method of adlfs.spec.AzureBlobFileSystem instance
-            Is there a file at the given path
+        Parameters
+        ----------
+        path: str
+            Blob path to check.
+
+        Returns
+        -------
+        bool
+            Whether the blob exists.
         """
         import fsspec
 
+        path = _clean_path(path)
         this_fs = fsspec.filesystem(
             self.fsspec_protocol,
             connection_string=self.connection_string,
@@ -640,31 +492,29 @@ class async_abfs:
         **kwargs,
     ):
         """
-        Help on method _details in module adlfs.spec.
+        Return details about filesystem contents.
 
-        async _details(contents, delimiter='/', return_glob: bool = False, target_path='',
-        version_id: Optional[str] = None, versions: bool = False, **kwargs) method of
-            AzureBlobFileSystem instance
-            Return a list of dictionaries of specifying details about the contents
-
-        Args:
-            contents
-
-            delimiter: str
-                Delimiter used to separate containers and files
-
-            return_glob: bool
-
-            version_id: str
-                Specific target version to be returned
-
-            versions: bool
-                If True, return all versions
+        Parameters
+        ----------
+        contents: Any
+            Filesystem contents to inspect.
+        delimiter: str, default="/"
+            Delimiter used to separate containers and files.
+        return_glob: bool, default=False
+            Whether ``contents`` represents a glob expression.
+        target_path: str, default=""
+            Target path used to resolve the details request.
+        version_id: str | None, default=None
+            Specific blob version to return.
+        versions: bool, default=False
+            Whether to return all blob versions.
+        **kwargs: Any
+            Additional arguments passed to the underlying filesystem method.
 
         Returns
         -------
-            list of dicts
-                Returns details about the contents, such as name, size and type
+        list[dict[str, Any]]
+            Details such as name, size, and type.
         """
         import fsspec
 
@@ -694,16 +544,28 @@ class async_abfs:
         **kwargs,
     ):
         """
-        Copy single file to remote.
+        Copy a single local file to remote storage.
 
-        :param lpath: Path to local file
-        :param rpath: Path to remote file
-        :param delimitier: Filepath delimiter
-        :param overwrite: Boolean (True). Whether to overwrite any existing file
-            (True) or raise if one already exists (False).
+        Parameters
+        ----------
+        lpath: Any
+            Local file path.
+        rpath: Any
+            Remote destination path.
+        delimiter: str, default="/"
+            File path delimiter.
+        overwrite: bool, default=True
+            Whether to replace an existing remote file.
+        callback: Any, default=None
+            Progress callback passed to the underlying filesystem method.
+        max_concurrency: int | None, default=None
+            Maximum concurrent upload operations.
+        **kwargs: Any
+            Additional arguments accepted by the underlying filesystem method.
         """
         import fsspec
 
+        rpath = _clean_path(rpath)
         this_fs = fsspec.filesystem(
             self.fsspec_protocol,
             connection_string=self.connection_string,
@@ -730,33 +592,28 @@ class async_abfs:
         **kwargs,
     ):
         """
-        Help on method _ls in module adlfs.spec.
+        List blobs at a path.
 
-        async _ls(path: str, detail: bool = False, invalidate_cache: bool = False,
-        delimiter: str = '/', return_glob: bool = False, version_id: Optional[str] = None,
-        versions: bool = False, **kwargs) method of adlfs.spec.AzureBlobFileSystem instance
-            Create a list of blob names from a blob container
-
-        Args:
-            path: str
-                Path to an Azure Blob with its container name
-
-            detail: bool
-                If False, return a list of blob names, else a list of dictionaries with blob details
-
-            delimiter: str
-                Delimiter used to split paths
-
-            version_id: str
-                Specific blob version to list
-
-            versions: bool
-                If True, list all versions
-
-            return_glob: bool
+        Parameters
+        ----------
+        path: str
+            Path to an Azure blob, including its container name.
+        detail: bool, default=False
+            Whether to return blob detail dictionaries instead of names.
+        delimiter: str, default="/"
+            Delimiter used to split paths.
+        return_glob: bool, default=False
+            Whether ``path`` is a glob expression.
+        version_id: str | None, default=None
+            Specific blob version to list.
+        versions: bool, default=False
+            Whether to list all versions.
+        **kwargs: Any
+            Additional arguments passed to the underlying filesystem method.
         """
         import fsspec
 
+        path = _clean_path(path)
         this_fs = fsspec.filesystem(
             self.fsspec_protocol,
             connection_string=self.connection_string,
@@ -770,6 +627,7 @@ class async_abfs:
             version_id=version_id,
             versions=versions,
             invalidate_cache=True,
+            **kwargs,
         )
 
     async def rm(
@@ -782,30 +640,26 @@ class async_abfs:
         **kwargs,
     ):
         """
-        Delete files.
+        Delete files or directories.
 
-        Args:
-        path: str or list of str
+        Parameters
+        ----------
+        path: str | Sequence[str]
             File(s) to delete.
-        recursive: bool
-            Defaults to False.
-            If file(s) are directories, recursively delete contents and then
-            also remove the directory.
-            Only used if `expand_path`.
-
-        maxdepth: int or None
-            Defaults to None.
-            Depth to pass to walk for finding files to delete, if recursive.
-            If None, there will be no limit and infinite recursion may be
-            possible.
-            Only used if `expand_path`.
-        expand_path: bool
-            Defaults to True.
-            If False, `self._expand_path` call will be skipped. This is more
-            efficient when you don't need the operation.
+        recursive: bool, default=False
+            Whether to delete directory contents recursively.
+        maxdepth: int | None, default=None
+            Maximum recursion depth when ``recursive`` is enabled.
+        delimiter: str, default="/"
+            File path delimiter.
+        expand_path: bool, default=True
+            Whether to expand paths before deletion.
+        **kwargs: Any
+            Additional arguments passed to the underlying filesystem method.
         """
         import fsspec
 
+        path = _clean_path(path)
         this_fs = fsspec.filesystem(
             self.fsspec_protocol,
             connection_string=self.connection_string,
@@ -817,6 +671,7 @@ class async_abfs:
             maxdepth=maxdepth,
             delimiter=delimiter,
             expand_path=expand_path,
+            **kwargs,
         )
 
     def make_sas_link(
@@ -826,9 +681,30 @@ class async_abfs:
         *,
         write: bool = False,
         content_disposition_filename: str | None = None,
-    ):
+    ) -> str:
+        """
+        Create a shareable direct link with a SAS token.
+
+        Parameters
+        ----------
+        filepath: str
+            Path to the blob.
+        expiry: datetime | None, default=None
+            Expiration time for the link. Defaults to 2050-01-01 for read-only
+            links and 30 minutes from now for writable links.
+        write: bool, default=False
+            Whether the link permits writing.
+        content_disposition_filename: str | None, default=None
+            File name for the Content-Disposition header.
+
+        Returns
+        -------
+        str
+            Direct blob URL with a SAS token attached.
+        """
         import azure.storage.blob as asb
 
+        filepath = _clean_path(filepath)
         account_dict = {
             x.split("=", 1)[0]: x.split("=", 1)[1]
             for x in self.connection_string.split(";")
@@ -845,11 +721,12 @@ class async_abfs:
             content_disposition = (
                 f'attachment; filename="{content_disposition_filename}"'
             )
+        container_name, blob_name = filepath.split("/", 1)
         sas = asb.generate_blob_sas(
             account_name=account_dict["AccountName"],
             account_key=account_dict["AccountKey"],
-            container_name=filepath.split("/", 1)[0],
-            blob_name=filepath.split("/", 1)[1],
+            container_name=container_name,
+            blob_name=blob_name,
             permission=asb.BlobSasPermissions(read=True, write=write),
             expiry=expiry,
             content_disposition=content_disposition,
@@ -857,8 +734,22 @@ class async_abfs:
         return f"https://{account_dict['AccountName']}.blob.core.windows.net/{filepath}?{sas}"
 
     async def stream_read(self, path: str) -> AsyncGenerator[bytes]:
+        """
+        Yield the contents of a remote blob in chunks.
+
+        Parameters
+        ----------
+        path: str
+            The remote blob path to read.
+
+        Yields
+        ------
+        bytes
+            The next chunk of blob content.
+        """
         from azure.storage.blob.aio import BlobClient
 
+        path = _clean_path(path)
         async with BlobClient.from_connection_string(
             self.connection_string, *(path.split("/", maxsplit=1))
         ) as blob:
@@ -868,8 +759,22 @@ class async_abfs:
                 yield chunk
 
     async def read(self, path: str) -> bytes:
+        """
+        Read the complete contents of a remote blob.
+
+        Parameters
+        ----------
+        path: str
+            The remote blob path to read.
+
+        Returns
+        -------
+        bytes
+            The blob contents.
+        """
         from azure.storage.blob.aio import BlobClient
 
+        path = _clean_path(path)
         async with BlobClient.from_connection_string(
             self.connection_string, *(path.split("/", maxsplit=1))
         ) as blob:
@@ -877,12 +782,54 @@ class async_abfs:
             return await stream.read()
 
     async def lock(self, lock_path: str, timeout_sec: int = 0) -> Lock:
+        """
+        Create an asynchronous distributed lock for a blob path.
+
+        Parameters
+        ----------
+        lock_path: str
+            The blob path used to hold the lock.
+        timeout_sec: int, default=0
+            Maximum time to wait for the lock. A value of zero means no wait.
+
+        Returns
+        -------
+        Lock
+            An asynchronous lock context manager.
+        """
         return Lock(self.connection_string, lock_path, timeout_sec)
 
     def writer(self, path: str) -> abfs_writer:
+        """
+        Create an asynchronous block-blob writer.
+
+        Parameters
+        ----------
+        path: str
+            The remote blob path to write.
+
+        Returns
+        -------
+        abfs_writer
+            An asynchronous writer context manager.
+        """
+        path = _clean_path(path)
         return abfs_writer(self.connection_string, path)
 
     async def read_json(self, path: str) -> dict | list:
+        """
+        Read and deserialize JSON data from a remote blob.
+
+        Parameters
+        ----------
+        path: str
+            The remote blob path containing JSON data.
+
+        Returns
+        -------
+        dict | list
+            The decoded JSON value.
+        """
         try:
             import orjson
 
@@ -891,9 +838,25 @@ class async_abfs:
             import json
 
             loads = json.loads
-
+        path = _clean_path(path)
         data = await self.read(path)
+        if _looks_like_gzip(data):
+            from gzip import GzipFile
+            from io import BytesIO
+
+            with GzipFile(fileobj=BytesIO(data)) as f:
+                data = f.read()
+
         return loads(data)
+
+
+def _looks_like_gzip(data: bytes) -> bool:
+    return (
+        len(data) >= 10
+        and data[0:2] == b"\x1f\x8b"  # gzip magic number
+        and data[2] == 8  # DEFLATE
+        and (data[3] & 0xE0) == 0  # reserved flags must be zero
+    )
 
 
 async def _stage_block(target: BlobClient, block_id: str, chunk: bytes):
@@ -929,6 +892,7 @@ class Lock:
         self.timeout = timeout_sec
 
     async def renewer(self):
+        """Renew the blob lease until lock shutdown or a service error."""
         from azure.core.exceptions import HttpResponseError
 
         while self.keep_renewing:
