@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from math import copysign
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 __all__ = [
@@ -11,6 +10,7 @@ __all__ = [
     "az_send",
     "clear_messages",
     "delete_message",
+    "error_email",
     "get_queue_properties",
     "global_async_client",
     "peek_messages",
@@ -39,7 +39,7 @@ with contextlib.suppress(ImportError):
         update_queue,
     )
 with contextlib.suppress(ImportError):
-    from dean_utils.utils.email_utility import az_send
+    from dean_utils.utils.email_utility import az_send, error_email
 with contextlib.suppress(ImportError):
     from dean_utils.utils.httpx import global_async_client
 
@@ -72,36 +72,6 @@ def date_range(begin: date, end: date, step: int = 1, *, inclusive: bool = False
         total_days_dif += int(copysign(1, total_days_dif))
     for dif in range(0, total_days_dif, step):
         yield begin + timedelta(days=dif)
-
-
-def error_email(func, attempts=1):
-    from dean_utils.utils.email_utility import az_send
-
-    def wrapper(*args, **kwargs):
-        subject = Path.cwd()
-        errors = []
-        for _ in range(attempts):
-            try:
-                return func(*args, **kwargs)
-            except Exception as err:
-                import inspect
-                from traceback import format_exception
-
-                filt_stack = "\n".join(
-                    [
-                        str(x)
-                        for x in inspect.stack()[1:]
-                        if "site-packages" not in x.filename
-                    ]
-                )
-                errors.append("\n".join(["\n".join(format_exception(err)), filt_stack]))
-
-        az_send(
-            str(subject),
-            msg="\n".join(errors),
-        )
-
-    return wrapper
 
 
 StorageOptionsDict: TypeAlias = dict[str, Any]
