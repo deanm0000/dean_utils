@@ -11,20 +11,25 @@ from typing import (
     Any,
     Literal,
     TypeAlias,
+    TypeVar,
     cast,
+    get_args,
+    get_origin,
     overload,
 )
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Mapping
 
     import httpx
     from azure.storage.blob import BlobBlock
     from azure.storage.blob._models import BlobProperties
     from azure.storage.blob.aio import BlobClient
+    from pydantic import BaseModel
 
 HTTPX_METHODS: TypeAlias = Literal["GET", "POST"]
+ModelT = TypeVar("ModelT", bound="BaseModel | Mapping[str, Any]")
 
 
 @overload
@@ -816,7 +821,20 @@ class async_abfs:
         path = _clean_path(path)
         return abfs_writer(self.connection_string, path)
 
-    async def read_json(self, path: str) -> dict | list:
+    @overload
+    async def read_json(self, path: str, model: None = None) -> dict | list: ...
+
+    @overload
+    async def read_json(self, path: str, model: type[ModelT]) -> ModelT: ...
+
+    @overload
+    async def read_json(self, path: str, model: type[list[ModelT]]) -> list[ModelT]: ...
+
+    async def read_json(
+        self,
+        path: str,
+        model: type[ModelT] | type[list[ModelT]] | None = None,
+    ) -> dict | list | ModelT:
         """
         Read and deserialize JSON data from a remote blob.
 
@@ -824,20 +842,17 @@ class async_abfs:
         ----------
         path: str
             The remote blob path containing JSON data.
+        model: type[ModelT] | type[list[ModelT]] | None, default=None
+            Pydantic model or TypedDict class, or ``list[Model]``.
+            TypedDicts are decoded without runtime validation. Pydantic models
+            require Pydantic 2 or newer.
 
         Returns
         -------
-        dict | list
-            The decoded JSON value.
+        dict | list | ModelT | list[ModelT]
+            The decoded JSON value, validated Pydantic model instances, or
+            unchecked dictionaries typed as the provided TypedDict.
         """
-        try:
-            import orjson
-
-            loads = orjson.loads
-        except ModuleNotFoundError:
-            import json
-
-            loads = json.loads
         path = _clean_path(path)
         data = await self.read(path)
         if _looks_like_gzip(data):
@@ -846,6 +861,22 @@ class async_abfs:
 
             with GzipFile(fileobj=BytesIO(data)) as f:
                 data = f.read()
+
+        if model is not None:
+            item_type = get_args(model)[0] if get_origin(model) is list else model
+            if not (isinstance(item_type, type) and issubclass(item_type, dict)):
+                from pydantic import TypeAdapter
+
+                return TypeAdapter(model).validate_json(data)
+
+        try:
+            import orjson
+
+            loads = orjson.loads
+        except ModuleNotFoundError:
+            import json
+
+            loads = json.loads
 
         return loads(data)
 
