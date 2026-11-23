@@ -7,11 +7,12 @@ if TYPE_CHECKING:
     import polars as pl
     from psycopg import AsyncConnection
     from psycopg.sql import Composed
-from dean_utils.utils.info_sql import info_sql
 
 
 async def _get_table_def(conn: AsyncConnection, table_schema_name: str):
     import polars as pl
+
+    from dean_utils.utils.info_sql import info_sql
 
     if "." in table_schema_name:
         table_schema, table_name = table_schema_name.split(".", maxsplit=1)

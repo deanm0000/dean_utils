@@ -4,11 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dean_utils"
-version="0.0.84"
-authors=[
-    { name="Dean MacGregor", email="powertrading121@gmail.com"}
-]
-description="various utils, functions, patches that I like"
+version = "0.0.85"
+authors = [{ name = "Dean MacGregor", email = "powertrading121@gmail.com" }]
+description = "various utils, functions, patches that I like"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
@@ -17,39 +15,51 @@ dependencies = []
 all = [
   "polars",
   "pyarrow",
-  "azure-storage-blob",
+  "azure-storage-blob[aio]",
   "adlfs",
   "fsspec",
-  "azure-storage-queue",
-  "python-multipart",
+  "azure-storage-queue[aio]",
+  "azure-identity",
   "azure-communication-email",
-  "pydantic"
+  "pydantic>=2",
+  "duckdb",
+  "psycopg",
+  "httpx",
 ]
+ducklake = ["duckdb"]
+blobs = ["azure-storage-blob[aio]", "adlfs", "fsspec"]
+email = ["azure-communication-email"]
+queues = ["azure-storage-queue[aio]", "azure-identity"]
+postgres = ["polars", "psycopg"]
+httpx = ["httpx"]
+pydantic = ["pydantic>=2"]
+polars = ["polars"]
+pyarrow = ["pyarrow"]
 
 [tool.ruff]
 line-length = 88
 fix = true
 select = [
-  "E", # pycodestyle
-  "W", # pycodestyle
-  "F", # Pyflakes
-  "B", # flake8-bugbear
-  "C4", # flake8-comprehensions
-  "D", # flake8-docstrings
-  "D213", # Augment NumPy docstring convention: Multi-line docstring summary should start at the second line
-  "D417", # Augment NumPy docstring convention: Missing argument descriptions
-  "I", # isort
-  "SIM", # flake8-simplify
-  "TID", # flake8-tidy-imports
-  "UP", # pyupgrade
-  "PT", # flake8-pytest-style
-  "RUF", # Ruff-specific rules
-  "PTH", # flake8-use-pathlib
-  "FA", # flake8-future-annotations
-  "PIE", # flake8-pie
-  "TD", # flake8-todos
-  "TRY", # tryceratops
-  "EM", # flake8-errmsg
+  "E",      # pycodestyle
+  "W",      # pycodestyle
+  "F",      # Pyflakes
+  "B",      # flake8-bugbear
+  "C4",     # flake8-comprehensions
+  "D",      # flake8-docstrings
+  "D213",   # Augment NumPy docstring convention: Multi-line docstring summary should start at the second line
+  "D417",   # Augment NumPy docstring convention: Missing argument descriptions
+  "I",      # isort
+  "SIM",    # flake8-simplify
+  "TID",    # flake8-tidy-imports
+  "UP",     # pyupgrade
+  "PT",     # flake8-pytest-style
+  "RUF",    # Ruff-specific rules
+  "PTH",    # flake8-use-pathlib
+  "FA",     # flake8-future-annotations
+  "PIE",    # flake8-pie
+  "TD",     # flake8-todos
+  "TRY",    # tryceratops
+  "EM",     # flake8-errmsg
   "FBT001", # flake8-boolean-trap
 ]
 
@@ -79,7 +89,11 @@ ignore = [
   # Lints below are turned off because of conflicts with the ruff formatter
   "D206",
   "W191",
-  "D100", "D101", "D102", "D103", "SIM112"
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "SIM112",
 ]
 
 [tool.ruff.lint.pycodestyle]
